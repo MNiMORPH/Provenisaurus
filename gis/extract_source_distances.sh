@@ -67,14 +67,18 @@ v.to.rast input=source_areas output=source_mask use=val value=1 --o
 r.stream.extract elevation="$DEM" threshold="$STREAM_THRESHOLD" \
     stream_raster=streams direction=flowdir memory=4000 --o
 
-# Clast-count points, snapped to the channel network, with categories + coords.
+# Clast-count points, snapped to the channel network for correct watershed
+# delineation.  ClastCounts.kml carries a "site" attribute that matches
+# ClastCounts.txt exactly (verified: all 77 names identical).  r.stream.snap
+# preserves point categories, so we re-attach "site" from the original table by
+# category -- exact even for the two sites that share coordinates
+# (AW14-Jualla2-DS / AndyCC-Jueya), because they keep distinct categories.
 v.import input="$CLAST_KML" output=ClastCounts --o
 r.stream.snap input=ClastCounts output=ClastCounts_snapped \
     stream_rast=streams radius="$SNAP_RADIUS" memory=1500 --o
-v.category input=ClastCounts_snapped output=ClastCounts_cat option=add --o
-# Carry the site name across the snap so the CSV keys match ClastCounts.txt.
-# (ClastCounts.kml stores the site name in its "Name" attribute -> column 'name'.)
-v.db.addtable map=ClastCounts_cat 2>/dev/null || true
+v.db.addtable map=ClastCounts_snapped --o
+v.db.join map=ClastCounts_snapped column=cat \
+    other_table=ClastCounts other_column=cat subset_columns=site --o
 # -----------------------------------------------------------------------------
 
 # Per-cell source-production weight.  v1: uniform = cell area [m^2].
@@ -87,7 +91,7 @@ mkdir -p "$(dirname "$OUT_CSV")"
 echo "site,lith_index,distance_m,weight" > "$OUT_CSV"
 
 # Dump snapped points as "easting|northing|cat|site".
-POINTS=$(v.out.ascii input=ClastCounts_cat columns=name format=point separator='|' --q)
+POINTS=$(v.out.ascii input=ClastCounts_snapped columns=site format=point separator='|' --q)
 
 echo "$POINTS" | while IFS='|' read -r E N CAT SITE; do
     [ -z "$E" ] && continue
