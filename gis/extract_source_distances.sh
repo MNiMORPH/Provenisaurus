@@ -22,14 +22,19 @@
 #   D3 flow routing     : r.watershed SFD drainage direction (drainDir).
 #   D5 production weight : uniform = cell area (pluggable: swap source_mask for a
 #                         continuous clast-generation-potential raster later).
-#   D6 attrition path   : WHOLE flow path (hillslope+channel) for v1 simplicity.
-#                         Channel-only (D. Roth: hillslope transport is a
-#                         different process) is provided, commented, in the loop.
+#   D6 attrition path   : DIST_MODE=whole (hillslope+channel, v1) or =channel
+#                         (fluvial-only; strips the hillslope leg so Sternberg
+#                         acts only along the channel -- D. Roth).
 #
 # RUN INSIDE the GRASS Toro location (UTM 20S / WGS84, EPSG:32720):
 #   export PROJ_DATA=/usr/share/proj GDAL_DATA=/usr/share/gdal; unset PROJ_LIB
 #   grass ~/Dropbox/grassdata/Toro-Lithology-Fining/PERMANENT \
 #         --exec sh gis/extract_source_distances.sh
+# Fluvial-only re-run (reuse the base maps built by the first run):
+#   grass ~/Dropbox/grassdata/Toro-Lithology-Fining/PERMANENT --exec env \
+#     DIST_MODE=channel SKIP_IMPORT=1 \
+#     OUT_CSV="$(pwd)/data/derived/source_cells_fluvial.csv" \
+#     sh gis/extract_source_distances.sh
 # -----------------------------------------------------------------------------
 set -e
 
@@ -39,7 +44,9 @@ STREAM_THRESHOLD=10000        # r.stream.extract accumulation threshold (cells);
 SNAP_RADIUS=50                # r.stream.snap radius (cells) [D2]
 SOURCE_LITHS="2 3 4 5 6"      # source lithologies (no conglomerate=1)
 OUTLET=230854.95278412075,7242785.076394613   # Campo Quijano (Toro outlet) [Andy]
-OUT_CSV="$(pwd)/data/derived/source_cells.csv"
+DIST_MODE="${DIST_MODE:-whole}"   # whole = hillslope+channel (v1); channel = fluvial-only (D6 v2)
+SKIP_IMPORT="${SKIP_IMPORT:-0}"   # 1 = reuse base maps from a previous run (skip the IMPORT block)
+OUT_CSV="${OUT_CSV:-$(pwd)/data/derived/source_cells.csv}"
 
 PROJDIR="${PROJDIR:-$HOME/Dropbox/Papers/InProgress/ClastsLithologyFiningToro}"
 GEOL_GPKG="${GEOL_GPKG:-$PROJDIR/github/GeologicalMap-QuebradaDelToro/GeologicalMap_QuebradaDelToro_UTM20S_WGS84.gpkg}"
@@ -51,8 +58,11 @@ SOURCE_CLASSES="Landslide:Landslide Scree:scree Steep_slope_gullies:Steep_slope_
 CLAST_KML="${CLAST_KML:-$PROJDIR/ClastCounts/ClastCounts.kml}"
 
 # ------------------------------- IMPORT --------------------------------------
-# Run once; comment out this block on re-runs once the maps exist.
-g.region -p raster="$DEM"
+g.region -p raster="$DEM"        # region always set (needed for CELL_AREA below)
+
+# Build the base maps once; set SKIP_IMPORT=1 to reuse them on a re-run (e.g. to
+# regenerate with a different DIST_MODE) without re-importing.
+if [ "$SKIP_IMPORT" != "1" ]; then
 
 # Flow routing: r.watershed SFD -> accumulation + drainage direction [D3].
 r.watershed elevation="$DEM" accumulation=flowAccum drainage=drainDir -s memory=8000 --o
@@ -86,6 +96,8 @@ v.db.addtable map=ClastCounts_snapped --o
 v.db.join map=ClastCounts_snapped column=cat \
     other_table=ClastCounts other_column=cat subset_columns=site --o
 v.what.rast map=ClastCounts_snapped raster=watershed_Toro column=in_toro
+
+fi   # end IMPORT (SKIP_IMPORT)
 # -----------------------------------------------------------------------------
 
 # Per-cell production weight.  v1: uniform = cell area [m^2] [D5].
@@ -106,19 +118,20 @@ echo "$POINTS" | while IFS='|' read -r E N CAT SITE IN; do
     r.water.outlet input=drainDir output=tmp_ws coordinates="$E,$N" --o --q
     r.mapcalc "tmp_streams = streams * tmp_ws" --o --q
 
-    # 2. WHOLE-PATH downstream distance to the site (= outlet of the masked
-    #    network).  -o => distance to outlet [D6 v1].
+    # 2. Downstream distance to the site (-o => distance to the outlet).
+    #    whole   : hillslope+channel flow path (D6 v1).
+    #    channel : strip the hillslope leg (dist-to-outlet - dist-to-stream) so
+    #              Sternberg acts only along the channel (D6 v2, D. Roth).
     r.stream.distance -o stream_rast=tmp_streams direction=drainDir \
         method=downstream distance=tmp_dist_outlet --o --q
-    DISTMAP=tmp_dist_outlet
-
-    # --- D6 v2 (channel-only attrition, D. Roth): uncomment the 3 lines below to
-    #     strip the hillslope leg so Sternberg acts only along the channel.
-    # r.stream.distance stream_rast=tmp_streams direction=drainDir \
-    #     method=downstream distance=tmp_dist_stream --o --q     # hillslope leg
-    # r.mapcalc "tmp_dist_chan = tmp_dist_outlet - tmp_dist_stream" --o --q
-    # DISTMAP=tmp_dist_chan
-    # ---
+    if [ "$DIST_MODE" = "channel" ]; then
+        r.stream.distance stream_rast=tmp_streams direction=drainDir \
+            method=downstream distance=tmp_dist_stream --o --q     # hillslope leg
+        r.mapcalc "tmp_dist_chan = max(tmp_dist_outlet - tmp_dist_stream, 0.0)" --o --q
+        DISTMAP=tmp_dist_chan
+    else
+        DISTMAP=tmp_dist_outlet
+    fi
 
     # 3. Keep source cells in this watershed, tagged by lithology + distance.
     r.mapcalc "tmp_src_lith = if(tmp_ws && source_mask, lithology, null())" --o --q
