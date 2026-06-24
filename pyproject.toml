@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provenisaurus"
+version = "0.1.0"
+description = "Sediment provenance + transport-distance extraction (a GRASS workflow) for clast-fining studies; produces the source_cells.csv that CorraSaurus inverts."
+authors = [{ name = "Andrew Wickert", email = "awickert@umn.edu" }]
+readme = "README.md"
+requires-python = ">=3.10"
+# NB: GRASS (grass.script) is provided by the GRASS install, not pip; the GRASS
+# orchestration runs inside a GRASS session. Only the pure glue is pip-installable.
+dependencies = [
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
