@@ -94,6 +94,10 @@ points) lives in the study repo, not here.
 
 Extracted from the Quebrada del Toro study via `git filter-repo` (history preserved).
 
+See [HANDOFF.md](HANDOFF.md) for design rationale — the agnostic source-map
+contract (binary now, planned 0–1 scalar "production potential"), the
+GravelSource boundary, and open items.
+
 ## License
 
 GPLv3 — see [LICENSE](LICENSE).
