@@ -71,7 +71,7 @@ def write_source_cells(rows, path, *, distance_decimals: int = 3) -> int:
     """
     fmt = f"{{:.{distance_decimals}f}}"
     with open(path, "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")   # LF (not csv's default CRLF)
         w.writerow(SOURCE_CELLS_HEADER)
         n = 0
         for r in rows:

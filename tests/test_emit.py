@@ -42,6 +42,8 @@ def test_write_source_cells_roundtrip(tmp_path):
     # whole-number weight printed without trailing .0; distance to 3 decimals
     assert r[1] == ["S1", "5", "79.882", "144"]
     assert r[2] == ["S1", "4", "200.000", "144"]
+    # LF line endings, not csv's default CRLF (so output matches the shell script)
+    assert b"\r" not in out.read_bytes()
 
 
 def test_write_distance_rounding(tmp_path):
