@@ -12,8 +12,10 @@ glue that turns ``r.stats`` output into source-cell rows lives in :mod:`emit`
 from .emit import (
     SourceCell, SOURCE_CELLS_HEADER, parse_rstats, source_rows, write_source_cells,
 )
+from .config import WorkflowConfig
 
 __all__ = [
+    "WorkflowConfig",
     "SourceCell", "SOURCE_CELLS_HEADER",
     "parse_rstats", "source_rows", "write_source_cells",
 ]
