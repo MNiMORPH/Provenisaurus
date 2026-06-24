@@ -30,3 +30,7 @@ the source-mask construction, per-site distance-distribution, and CSV emit as
 shell prototype.
 
 Extracted from the Quebrada del Toro study via `git filter-repo` (history preserved).
+
+## License
+
+GPLv3 — see [LICENSE](LICENSE).
