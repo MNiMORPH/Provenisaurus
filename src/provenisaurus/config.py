@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -15,21 +16,23 @@ class WorkflowConfig:
     Names the existing GRASS maps the workflow reads (supplied by the caller /
     a study's prep step) and the extraction parameters. See the README "Inputs"
     section for the full contract: required maps (dem, lithology, source_mask,
-    points, and drainage+streams unless build_basemaps), the two point-attribute
-    columns, and the parameters.
+    raw points, and drainage+streams unless build_basemaps), the points' site
+    column, and the parameters (incl. snap_radius). Provenisaurus snaps the raw
+    points onto the network it builds; which sites to process is the caller's
+    choice (supply only those points) -- there is no in-basin filter here.
     """
 
-    # input GRASS maps (the Toro-specific prep builds these; provided here by name)
+    # input GRASS maps (the caller / a study's prep builds these; named here)
     dem: str = "DEM"
     accumulation: str = "flowAccum"
     drainage: str = "drainDir"
     streams: str = "streams"
     lithology: str = "lithology"          # per-cell class (lith_index) raster
     source_mask: str = "source_mask"      # 1 where a cell is a clast source, else null
-    points: str = "points"                # snapped sample points (vector)
+    points: str = "points"                # RAW sample points (snapped internally)
     site_column: str = "site"
-    in_basin_column: str = "in_basin"     # = 1 for in-watershed points
     # parameters
+    snap_radius: Optional[int] = 50       # r.stream.snap radius [cells]; None/0 = already on network
     stream_threshold: int = 10000         # r.stream.extract accumulation threshold [cells]
     source_indices: tuple = (2, 3, 4, 5, 6)
     dist_mode: str = "whole"              # "whole" (hillslope+channel) | "channel" (fluvial)
@@ -42,6 +45,8 @@ class WorkflowConfig:
             raise ValueError(f"dist_mode must be 'whole' or 'channel', got {self.dist_mode!r}")
         if not self.source_indices:
             raise ValueError("source_indices must be non-empty")
+        if self.snap_radius is not None and int(self.snap_radius) < 0:
+            raise ValueError("snap_radius must be >= 0 (or None to skip snapping)")
 
     @classmethod
     def from_yaml(cls, path) -> "WorkflowConfig":

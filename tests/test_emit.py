@@ -5,7 +5,8 @@ import csv
 import pytest
 
 from provenisaurus.emit import (
-    SOURCE_CELLS_HEADER, parse_rstats, source_rows, write_source_cells)
+    SOURCE_CELLS_HEADER, parse_rstats, source_rows, write_source_cells,
+    parse_cat_attr, join_sites)
 
 
 def test_parse_rstats_basic():
@@ -44,6 +45,22 @@ def test_write_source_cells_roundtrip(tmp_path):
     assert r[2] == ["S1", "4", "200.000", "144"]
     # LF line endings, not csv's default CRLF (so output matches the shell script)
     assert b"\r" not in out.read_bytes()
+
+
+def test_join_sites_by_cat():
+    geom = "212406|7293834|1\n218898|7268238|2\n"
+    attr = "1|AW14-SB-CC\n2|AW15_28_CC\n"
+    assert join_sites(geom, attr) == [("212406", "7293834", "AW14-SB-CC"),
+                                      ("218898", "7268238", "AW15_28_CC")]
+
+
+def test_join_sites_skips_unmatched_cat():
+    # snapping preserves cats; a geometry cat with no site row is dropped
+    assert join_sites("10|20|1\n30|40|9\n", "1|S1\n") == [("10", "20", "S1")]
+
+
+def test_parse_cat_attr_ignores_header():
+    assert parse_cat_attr("cat|site\n1|S1\n2|S2\n") == {"1": "S1", "2": "S2"}
 
 
 def test_write_distance_rounding(tmp_path):

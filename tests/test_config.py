@@ -16,6 +16,13 @@ def test_dist_mode_validated():
         WorkflowConfig(dist_mode="sideways")
 
 
+def test_snap_radius_default_and_validation():
+    assert WorkflowConfig().snap_radius == 50
+    assert WorkflowConfig(snap_radius=None).snap_radius is None    # skip snapping
+    with pytest.raises(ValueError):
+        WorkflowConfig(snap_radius=-1)
+
+
 def test_empty_sources_rejected():
     with pytest.raises(ValueError):
         WorkflowConfig(source_indices=[])

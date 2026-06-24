@@ -11,7 +11,7 @@ import grass.script as gs
 
 from . import grass_steps as G
 from .config import WorkflowConfig
-from .emit import source_rows, write_source_cells
+from .emit import source_rows, write_source_cells, join_sites
 
 _TMP = "tmp_prov"
 _TMP_MAPS = [f"{_TMP}_ws", f"{_TMP}_streams", f"{_TMP}_dist_outlet",
@@ -30,7 +30,18 @@ def run(cfg: WorkflowConfig):
 
     gs.run_command("g.region", raster=cfg.dem, quiet=True)
     cell_area = G.cell_area_m2()
-    sites = G.list_sites(cfg.points, cfg.site_column, cfg.in_basin_column)
+
+    # Snap the raw points onto the network (or use as-is), then recover each
+    # site's name from the original table by cat (snapping preserves cats).
+    snapped_vec = None
+    if cfg.snap_radius:
+        snapped_vec = f"{_TMP}_snapped"
+        G.snap_points(cfg.points, cfg.streams, cfg.accumulation,
+                      cfg.snap_radius, snapped_vec)
+        geom = G.points_geometry(snapped_vec)
+    else:
+        geom = G.points_geometry(cfg.points)
+    sites = join_sites(geom, G.points_attr(cfg.points, cfg.site_column))
 
     rows = []
     try:
@@ -42,6 +53,8 @@ def run(cfg: WorkflowConfig):
             rows.extend(source_rows(stats, site, cfg.source_indices, cell_area))
     finally:
         G.remove_maps(_TMP_MAPS)
+        if snapped_vec:
+            G.remove_vectors([snapped_vec])
 
     n_rows = write_source_cells(rows, cfg.out_csv)
     return n_rows, len(sites)

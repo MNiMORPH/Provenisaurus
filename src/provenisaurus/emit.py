@@ -58,6 +58,40 @@ def source_rows(stats_text: str, site: str, source_indices, cell_area: float):
             for cls, dist in parse_rstats(stats_text) if cls in sources]
 
 
+def parse_points(geom_text: str):
+    """[(easting, northing, cat)] from ``v.out.ascii format=point`` (``E|N|cat``)."""
+    out = []
+    for line in geom_text.splitlines():
+        f = line.strip().split("|")
+        if len(f) >= 3 and f[0]:
+            out.append((f[0], f[1], f[2]))
+    return out
+
+
+def parse_cat_attr(attr_text: str):
+    """``{cat: value}`` from ``v.db.select -c columns=cat,<col> separator='|'``.
+
+    A leading ``cat`` header (if column names weren't suppressed) is ignored.
+    """
+    m = {}
+    for line in attr_text.splitlines():
+        f = line.strip().split("|")
+        if len(f) >= 2 and f[0] and f[0] != "cat":
+            m[f[0]] = f[1]
+    return m
+
+
+def join_sites(geom_text: str, attr_text: str):
+    """[(easting, northing, site)] joining point geometry to site names by cat.
+
+    ``geom_text`` is the (possibly snapped) point geometry; ``attr_text`` is the
+    original points' ``cat,site`` table.  Snapping preserves cats, so the snapped
+    geometry is matched back to its site name through the cat.
+    """
+    cat_site = parse_cat_attr(attr_text)
+    return [(e, n, cat_site[c]) for e, n, c in parse_points(geom_text) if c in cat_site]
+
+
 def _fmt_weight(w: float) -> str:
     """Drop a trailing ``.0`` on whole-number weights (e.g. 144.0 -> '144')."""
     return str(int(w)) if float(w).is_integer() else repr(float(w))

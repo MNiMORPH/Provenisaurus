@@ -30,16 +30,20 @@ data). All maps must share one projected GRASS location / region.
 | `dem` | raster | elevation; sets the analysis region |
 | `lithology` | raster | per-cell class code (`lith_index`) — the classes you invert for |
 | `source_mask` | raster | `1` where a cell is a clast **source**, else null — *your* source-area definition (lithology ∩ a source criterion: mass-wasting, slope threshold, susceptibility, …) |
-| `points` | vector | sample sites, **snapped to the channel network**, with two attribute columns (below) |
+| `points` | vector | **raw** sample sites (field coordinates) with a `site` attribute — Provenisaurus snaps them onto the network it builds |
 | `drainage`, `streams` | rasters | flow direction + channel network — **supply them, or** set `build_basemaps: true` to build them from the DEM (`r.watershed` + `r.stream.extract` at `stream_threshold`) |
+| `accumulation` | raster | flow accumulation — needed for snapping when *not* building base maps (built otherwise) |
 
-`points` attribute columns:
-- `site_column` (default `site`) — site name; becomes the `site` column of the output.
-- `in_basin_column` (default `in_basin`) — `1` for sites to process (inside the study watershed); others are skipped.
+The `points` table needs one attribute, `site_column` (default `site`) — the site
+name, which becomes the `site` column of the output. **Which** sites to process is
+the *caller's* choice: supply only the points you want (e.g. those inside your
+study watershed). There is no in-basin filter here — deciding basin membership
+needs a study-specific outlet, so it stays with the caller.
 
 **Parameters**
 - `source_indices` — which `lith_index` values are modelled sources (others dropped).
 - `dist_mode` — `whole` (hillslope + channel) or `channel` (fluvial-only: dist-to-outlet − dist-to-stream).
+- `snap_radius` — `r.stream.snap` radius [cells] for snapping raw points onto the network; `null`/`0` if the points are already on it.
 - `stream_threshold` — accumulation threshold [cells] for stream extraction (only used if `build_basemaps`).
 - `out_csv` — output path.
 
@@ -47,9 +51,10 @@ data). All maps must share one projected GRASS location / region.
 `site, lith_index, distance_m, weight`, i.e. the per-site distribution of source
 area (`weight` = cell area) vs. downstream transport distance, for CorraSaurus.
 
-**Assumptions** — `points` are snapped to channel cells (so each site's
-`r.water.outlet` lands on the network); `lithology` and `source_mask` are aligned
-to the DEM grid; everything is in one projected location.
+**Assumptions** — `lithology` and `source_mask` are aligned to the DEM grid;
+everything is in one projected location. (Points need *not* be pre-snapped —
+Provenisaurus snaps them — and there is no in-basin filter; supply the points you
+want processed.)
 
 ## Usage
 
@@ -65,9 +70,9 @@ provenisaurus:
   streams: streams
   lithology: lithology
   source_mask: source_mask
-  points: clast_points
+  points: clast_points      # RAW field points (snapped internally)
   site_column: site
-  in_basin_column: in_basin
+  snap_radius: 50           # cells; null -> points already on the network
   source_indices: [2, 3, 4, 5, 6]
   dist_mode: whole          # or: channel
   build_basemaps: false     # true -> build drainage + streams from the DEM

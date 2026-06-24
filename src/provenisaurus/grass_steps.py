@@ -30,23 +30,28 @@ def extract_streams(dem, accumulation, threshold, streams, memory=4000):
                    overwrite=True, quiet=True)
 
 
-def list_sites(points, site_column, in_basin_column):
-    """[(easting, northing, site)] for sample points flagged in-basin (==1).
+def snap_points(points, streams, accumulation, radius, out, memory=1500):
+    """Snap raw sample points onto the channel network (r.stream.snap).
 
-    v.out.ascii point format is ``E|N|cat|<site>|<in_basin>``.
+    Returns ``out`` (a new point vector at the snapped locations; input cats are
+    preserved, so site names are recovered from the original table by cat).
     """
-    txt = gs.read_command("v.out.ascii", input=points,
-                          columns=f"{site_column},{in_basin_column}",
-                          format="point", separator="|", quiet=True)
-    out = []
-    for line in txt.splitlines():
-        f = line.strip().split("|")
-        if len(f) < 5:
-            continue
-        e, n, _cat, site, in_basin = f[0], f[1], f[2], f[3], f[4]
-        if in_basin.strip() == "1":
-            out.append((e, n, site))
+    gs.run_command("r.stream.snap", input=points, output=out, stream_rast=streams,
+                   accumulation=accumulation, radius=radius, memory=memory,
+                   overwrite=True, quiet=True)
     return out
+
+
+def points_geometry(vector):
+    """v.out.ascii point geometry: one ``easting|northing|cat`` line per point."""
+    return gs.read_command("v.out.ascii", input=vector, format="point",
+                           separator="|", quiet=True)
+
+
+def points_attr(vector, column):
+    """v.db.select ``cat|<column>`` text (column-name header suppressed)."""
+    return gs.read_command("v.db.select", map=vector, columns=f"cat,{column}",
+                           separator="|", flags="c", quiet=True)
 
 
 def site_distance_field(drainage, streams, e, n, dist_mode, *, tmp):
@@ -91,4 +96,9 @@ def source_cells_stats(ws, source_mask, lithology, distmap, *, tmp):
 
 def remove_maps(names):
     gs.run_command("g.remove", flags="f", type="raster",
+                   name=",".join(names), quiet=True)
+
+
+def remove_vectors(names):
+    gs.run_command("g.remove", flags="f", type="vector",
                    name=",".join(names), quiet=True)
