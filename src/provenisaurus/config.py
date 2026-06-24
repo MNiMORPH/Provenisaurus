@@ -10,6 +10,15 @@ import yaml
 
 @dataclass
 class WorkflowConfig:
+    """Inputs + parameters for the source-distance extraction (validated on init).
+
+    Names the existing GRASS maps the workflow reads (supplied by the caller /
+    a study's prep step) and the extraction parameters. See the README "Inputs"
+    section for the full contract: required maps (dem, lithology, source_mask,
+    points, and drainage+streams unless build_basemaps), the two point-attribute
+    columns, and the parameters.
+    """
+
     # input GRASS maps (the Toro-specific prep builds these; provided here by name)
     dem: str = "DEM"
     accumulation: str = "flowAccum"
