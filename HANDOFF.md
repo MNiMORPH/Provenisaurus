@@ -33,26 +33,28 @@ out into its own repo only if a method becomes generally useful. Keep GravelSour
 on the *code* side of the data/derived line — it reads raw DEM + geology and
 writes a derived map; the raw data stays untouched.
 
-## The source-map contract (and the one planned change)
+## The source-map contract
 
-The source map is, in effect, a **per-cell production weight**:
+The source map is, in effect, a **per-cell production weight**, and Provenisaurus
+handles both binary and continuous maps through one path:
+`weight = cell_area × source_value`, where `source_value` is the `source_mask`
+cell value.
 
-- **Binary now.** `source_mask` = `1` where a cell is a source, else null.
-  Provenisaurus gates on presence and gives every source cell `weight = cell_area`
-  (uniform). This is all the current code does.
-- **0–1 scalar later** (A. Wickert's intent). A continuous "clast-generation
-  potential" map → `weight = cell_area × potential(cell)`. A cell that is "0.3
-  likely a source" contributes 0.3× the weight. This is forward-compatible: the
-  contract stays "a per-cell source weight raster," only its *values* change from
-  {0,1} to [0,1].
+- **Binary.** `source_mask` = `1` where a cell is a source, else null. Then
+  `source_value == 1`, so `weight = cell_area` (uniform) — byte-for-byte the
+  original behaviour (`144.0` formats to `"144"`), so the regression still holds.
+- **Continuous [0,1].** A "clast-generation potential" map → a cell that is "0.3
+  likely a source" contributes 0.3× the weight. Values are **enforced to [0,1]**:
+  an out-of-range value raises (the map is malformed; callers wanting a different
+  convention should adjust the map, not the weight — A. Wickert).
 
-**Where the scalar change goes** (when the scalar map arrives — not yet done):
-- `grass_steps.source_cells_stats` currently dumps `(lith_index, distance)` per
-  source cell. Add the source value: dump `(lith_index, distance, source_value)`.
-- `emit.source_rows` currently sets `weight = cell_area` (constant). Make it
-  `weight = cell_area × source_value`.
-That's the whole change; everything downstream (CSV schema, CorraSaurus) is
-unchanged because `weight` is already the per-cell source weight.
+There is no mode flag — binary is just the `source_value == 1` special case.
+Implemented in the `Support scalar [0,1] source maps` commit:
+`grass_steps.source_cells_stats` dumps a third `r.stats` column (the masked
+`source_mask` value); `emit.parse_rstats` yields `(lith_index, distance,
+source_value)` and enforces the range; `emit.source_rows` folds the value into the
+weight. Everything downstream (CSV schema, CorraSaurus) is unchanged because
+`weight` was already the per-cell source weight.
 
 ## Border principle (what Provenisaurus owns)
 
@@ -68,6 +70,34 @@ study-specific maps + the choice of which points to process:
 
 Litmus test: every step needing the flow network is *inside* Provenisaurus; every
 input is raw data or a study choice.
+
+## DEM post-processing (the flow network) — Provenisaurus owns it, exclusively
+
+Decided (A. Wickert): Provenisaurus is the *single author* of the DEM-derived flow
+network (flow accumulation, drainage direction, streams).
+
+- **No precomputed derivatives accepted as input.** `accumulation`, `drainage`,
+  and `streams` are Provenisaurus's own internal maps, not caller inputs. The
+  convenience of "pass in maps you already computed" is deliberately *not* offered:
+  those derivatives carry conventions the distances depend on (the `r.watershed`
+  SFD drainage encoding `r.water.outlet`/`r.stream.distance` expect, the
+  accumulation `r.stream.snap` reads, an `r.stream.extract` stream raster), and a
+  foreign map built with a different convention (MFD, a different D8 encoding, a
+  different stream definition) would pass silently and produce wrong distances.
+  One author = no convention to mismatch.
+- **Compute once, reuse if present.** If Provenisaurus's own base maps already
+  exist in the mapset, reuse them — e.g. a `dist_mode` whole→channel re-run is over
+  the *same* network and should cost nothing extra. Since only Provenisaurus writes
+  them, the convention is guaranteed. A **force-rebuild** override is needed for
+  staleness (the DEM changed): reuse is the default, rebuild is explicit.
+- **GravelSource stays decoupled.** Some source-definition methods need the same
+  DEM derivatives (slope, accumulation), but GravelSource is a *distinct workflow*
+  whose only interface is the [0,1] source raster; if a method needs derivatives it
+  computes its own. We accept that duplication to keep the two modules independent.
+
+Status: the decision is recorded; `build_basemaps` is the seed of it, but the
+"internal-only + reuse-if-present + force-rebuild" behaviour is not yet built (open
+items).
 
 ## Structure
 
@@ -86,7 +116,21 @@ Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
 
 - [x] Python workflow (config + wrappers + pure emit core), regression-verified.
 - [x] Snap raw points internally; drop the in-basin filter.
-- [ ] **Scalar source map** support (the one change above) — when GravelSource emits a 0–1 map.
-- [ ] **Toro-prep split:** the Toro-specific imports (geology→`lithology`, Tofelde→`source_mask`, KML→points) currently live in `gis/extract_source_distances.sh` (retained as reference); move them to the study repo so Provenisaurus carries no Toro specifics, then delete the shell script.
-- [ ] **Channel heads:** `dist_mode=channel` is implemented, but the channel network is a fixed area-threshold; the *fluvial* channel head is unresolved (a known open problem — see the study repo). Affects only `channel` runs.
-- [ ] Optional: promote `flow_routing`/`extract_streams` etc. into a documented "build base maps" path for studies that want Provenisaurus to build everything.
+- [x] **Scalar source map** support — `weight = cell_area × source_value`, [0,1]
+  enforced, binary unchanged (see "The source-map contract" above). NB: verified by
+  the unit tests; the GRASS byte-for-byte regression should be re-run in the Toro
+  location to confirm the binary path is still identical.
+- [ ] **Base-maps ownership** (decided, not yet built): make
+  `accumulation`/`drainage`/`streams` internal (drop them as caller inputs),
+  reuse-if-present, add a force-rebuild override. See "DEM post-processing" above.
+- [ ] **Toro-prep split:** move the Toro-specific imports to the study repo, then
+  delete `gis/extract_source_distances.sh` (retained as reference). Exact scope:
+  geology→`lithology`; Tofelde→`source_mask`; KML→**raw** `points` (+ `site`) with
+  *no* snap and *no* `in_toro` flag (Provenisaurus snaps; basin membership is the
+  caller's point-selection, so the Campo Quijano outlet + watershed stay
+  caller-side). Provenisaurus keeps every flow-network step.
+- [ ] **Channel heads:** `dist_mode=channel` works, but the channel network is a
+  fixed area-threshold and the *fluvial* channel head is unresolved — tracked in
+  [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1) (slope–area /
+  Passalacqua-GeoNet / Clubb-DrEICH / field maps; pluggable like `source_mask`).
+  Affects only `channel` runs.
