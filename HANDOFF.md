@@ -95,9 +95,13 @@ network (flow accumulation, drainage direction, streams).
   whose only interface is the [0,1] source raster; if a method needs derivatives it
   computes its own. We accept that duplication to keep the two modules independent.
 
-Status: the decision is recorded; `build_basemaps` is the seed of it, but the
-"internal-only + reuse-if-present + force-rebuild" behaviour is not yet built (open
-items).
+Status: **implemented.** `build_basemaps` is gone. The workflow ensures the flow
+network on each run — reuse if all three maps are present, build (all three
+together, for consistency) when any is missing or when `rebuild_basemaps` is set;
+the region is set to the DEM first. `accumulation`/`drainage`/`streams` are no
+longer caller inputs (config + README updated). Verified: the `whole` reuse-path
+regression is still byte-for-byte identical to the reference (3,176,159 rows,
+matching MD5).
 
 ## Structure
 
@@ -122,9 +126,12 @@ Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
   post-change code (32 in-basin points, `source_mask` still binary) and the output
   is **byte-for-byte identical** to the pre-change `source_cells.csv` (3,176,159
   rows, matching MD5) — the binary path is provably unaffected.
-- [ ] **Base-maps ownership** (decided, not yet built): make
-  `accumulation`/`drainage`/`streams` internal (drop them as caller inputs),
-  reuse-if-present, add a force-rebuild override. See "DEM post-processing" above.
+- [x] **Base-maps ownership** — `accumulation`/`drainage`/`streams` are now
+  internal (dropped as caller inputs); the workflow reuses them if present and
+  rebuilds all three on `rebuild_basemaps` or when any is missing. `build_basemaps`
+  removed. Reuse-path regression still byte-for-byte identical. See "DEM
+  post-processing" above. (Config schema change: a config still setting
+  `build_basemaps` now errors — downstream Toro configs must drop it.)
 - [ ] **Toro-prep split:** move the Toro-specific imports to the study repo, then
   delete `gis/extract_source_distances.sh` (retained as reference). Exact scope:
   geology→`lithology`; Tofelde→`source_mask`; KML→**raw** `points` (+ `site`) with
