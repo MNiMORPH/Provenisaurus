@@ -20,8 +20,9 @@ distance is selectable (`DIST_MODE`).
 ## Inputs
 
 Provenisaurus runs **inside a GRASS session** and reads existing maps from the
-current mapset — *you* supply them (e.g. a study's prep step builds them from raw
-data). All maps must share one projected GRASS location / region.
+current mapset — *you* supply the inputs below (e.g. a study's prep step builds
+them from raw data); Provenisaurus builds the flow network it needs. All maps must
+share one projected GRASS location / region.
 
 **Required maps**
 
@@ -31,8 +32,15 @@ data). All maps must share one projected GRASS location / region.
 | `lithology` | raster | per-cell class code (`lith_index`) — the classes you invert for |
 | `source_mask` | raster | per-cell clast-**source** production weight, else null — `1` where a cell is a source (binary), or a continuous `[0,1]` "production potential"; *your* source-area definition (lithology ∩ a source criterion: mass-wasting, slope threshold, susceptibility, …) |
 | `points` | vector | **raw** sample sites (field coordinates) with a `site` attribute — Provenisaurus snaps them onto the network it builds |
-| `drainage`, `streams` | rasters | flow direction + channel network — **supply them, or** set `build_basemaps: true` to build them from the DEM (`r.watershed` + `r.stream.extract` at `stream_threshold`) |
-| `accumulation` | raster | flow accumulation — needed for snapping when *not* building base maps (built otherwise) |
+
+**Flow network (built for you, not an input).** Provenisaurus owns the DEM-derived
+flow network — flow accumulation, drainage direction, and the stream network. It
+builds them from the `dem` (`r.watershed` + `r.stream.extract` at
+`stream_threshold`) when they're absent, **reuses** them if they already exist in
+the mapset (so a `dist_mode` re-run over the same DEM costs nothing extra), and
+rebuilds them only when you set `rebuild_basemaps: true`. You do **not** supply
+them: there is one author of the flow network, so there is no foreign convention to
+mismatch.
 
 The `points` table needs one attribute, `site_column` (default `site`) — the site
 name, which becomes the `site` column of the output. **Which** sites to process is
@@ -44,7 +52,8 @@ needs a study-specific outlet, so it stays with the caller.
 - `source_indices` — which `lith_index` values are modelled sources (others dropped).
 - `dist_mode` — `whole` (hillslope + channel) or `channel` (fluvial-only: dist-to-outlet − dist-to-stream).
 - `snap_radius` — `r.stream.snap` radius [cells] for snapping raw points onto the network; `null`/`0` if the points are already on it.
-- `stream_threshold` — accumulation threshold [cells] for stream extraction (only used if `build_basemaps`).
+- `stream_threshold` — accumulation threshold [cells] for stream extraction (used when the flow network is built/rebuilt).
+- `rebuild_basemaps` — force-rebuild the flow network even if it already exists (default: reuse if present).
 - `out_csv` — output path.
 
 **Output** — `source_cells.csv` (LF), one row per source cell:
@@ -67,8 +76,6 @@ grass <location>/<mapset> --exec python -m provenisaurus config.yml
 # config.yml
 provenisaurus:
   dem: tandemx_toro
-  drainage: drainDir
-  streams: streams
   lithology: lithology
   source_mask: source_mask
   points: clast_points      # RAW field points (snapped internally)
@@ -76,8 +83,8 @@ provenisaurus:
   snap_radius: 50           # cells; null -> points already on the network
   source_indices: [2, 3, 4, 5, 6]
   dist_mode: whole          # or: channel
-  build_basemaps: false     # true -> build drainage + streams from the DEM
-  stream_threshold: 10000   # cells (only if build_basemaps)
+  stream_threshold: 10000   # cells; for building the stream network
+  rebuild_basemaps: false   # true -> rebuild the flow network even if present
   out_csv: source_cells.csv
 ```
 
