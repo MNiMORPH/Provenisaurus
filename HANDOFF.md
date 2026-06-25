@@ -117,9 +117,11 @@ Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
 - [x] Python workflow (config + wrappers + pure emit core), regression-verified.
 - [x] Snap raw points internally; drop the in-basin filter.
 - [x] **Scalar source map** support — `weight = cell_area × source_value`, [0,1]
-  enforced, binary unchanged (see "The source-map contract" above). NB: verified by
-  the unit tests; the GRASS byte-for-byte regression should be re-run in the Toro
-  location to confirm the binary path is still identical.
+  enforced, binary unchanged (see "The source-map contract" above). Verified by the
+  unit tests *and* the GRASS regression: re-ran the Toro `whole` extraction on the
+  post-change code (32 in-basin points, `source_mask` still binary) and the output
+  is **byte-for-byte identical** to the pre-change `source_cells.csv` (3,176,159
+  rows, matching MD5) — the binary path is provably unaffected.
 - [ ] **Base-maps ownership** (decided, not yet built): make
   `accumulation`/`drainage`/`streams` internal (drop them as caller inputs),
   reuse-if-present, add a force-rebuild override. See "DEM post-processing" above.
