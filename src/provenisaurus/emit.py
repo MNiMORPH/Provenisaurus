@@ -29,33 +29,47 @@ class SourceCell(NamedTuple):
 
 
 def parse_rstats(text: str):
-    """Yield ``(lith_index, distance_m)`` from ``r.stats -1 -n`` two-column output.
+    """Yield ``(lith_index, distance_m, source_value)`` from ``r.stats -1 -n``
+    three-column output.
 
-    Lines are ``"<int>,<float>"``.  Blank lines and any cell with a null marker
-    (``*``) are skipped (``-n`` should already drop nulls, but be defensive).
+    Lines are ``"<int>,<float>,<float>"`` -- class, downstream distance, and the
+    source cell's production potential (the ``source_mask`` cell value: ``1`` for
+    a binary mask, in ``[0, 1]`` for a continuous one).  Blank lines and any cell
+    with a null marker (``*``) are skipped (``-n`` should already drop nulls, but
+    be defensive).  ``source_value`` must lie in ``[0, 1]``; a value outside that
+    range raises ``ValueError`` (the source map is malformed -- callers wanting a
+    different convention should adjust the map, not the weight).
     """
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
         parts = line.split(",")
-        if len(parts) != 2:
+        if len(parts) != 3:
             continue
-        cls, dist = parts[0].strip(), parts[1].strip()
-        if cls in ("", "*") or dist in ("", "*"):
+        cls, dist, val = (p.strip() for p in parts)
+        if cls in ("", "*") or dist in ("", "*") or val in ("", "*"):
             continue
-        yield int(cls), float(dist)
+        value = float(val)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"source_mask value {value!r} outside [0, 1] "
+                f"(lith_index {cls}, distance {dist})")
+        yield int(cls), float(dist), value
 
 
 def source_rows(stats_text: str, site: str, source_indices, cell_area: float):
     """Source-cell rows for one site.
 
     Keep only cells whose class is a modelled source (``source_indices``), tag
-    each with the site name and the per-cell production weight (``cell_area``).
+    each with the site name and the per-cell production weight,
+    ``cell_area * source_value``.  A binary mask has ``source_value == 1``, so the
+    weight is the uniform ``cell_area``; a continuous [0, 1] potential scales it
+    down (a "0.3 likely a source" cell contributes 0.3x the weight).
     """
     sources = {int(i) for i in source_indices}
-    return [SourceCell(site, cls, dist, float(cell_area))
-            for cls, dist in parse_rstats(stats_text) if cls in sources]
+    return [SourceCell(site, cls, dist, cell_area * value)
+            for cls, dist, value in parse_rstats(stats_text) if cls in sources]
 
 
 def parse_points(geom_text: str):

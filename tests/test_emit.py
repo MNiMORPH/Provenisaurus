@@ -10,30 +10,58 @@ from provenisaurus.emit import (
 
 
 def test_parse_rstats_basic():
-    text = "5,79.882\n5,91.882\n4,200.0\n"
-    assert list(parse_rstats(text)) == [(5, 79.882), (5, 91.882), (4, 200.0)]
+    text = "5,79.882,1\n5,91.882,1\n4,200.0,1\n"
+    assert list(parse_rstats(text)) == [(5, 79.882, 1.0), (5, 91.882, 1.0),
+                                        (4, 200.0, 1.0)]
 
 
 def test_parse_rstats_skips_blank_and_null():
-    text = "5,79.882\n\n*,*\n4,200.0\n   \n"
-    assert list(parse_rstats(text)) == [(5, 79.882), (4, 200.0)]
+    text = "5,79.882,1\n\n*,*,*\n4,200.0,1\n   \n"
+    assert list(parse_rstats(text)) == [(5, 79.882, 1.0), (4, 200.0, 1.0)]
+
+
+def test_parse_rstats_reads_scalar_potential():
+    assert list(parse_rstats("5,79.882,0.3\n")) == [(5, 79.882, 0.3)]
+
+
+def test_parse_rstats_rejects_value_above_one():
+    with pytest.raises(ValueError):
+        list(parse_rstats("5,79.882,1.5\n"))
+
+
+def test_parse_rstats_rejects_negative_value():
+    with pytest.raises(ValueError):
+        list(parse_rstats("5,79.882,-0.1\n"))
 
 
 def test_source_rows_filters_to_sources_and_tags():
     # lith 1 (conglomerate) and 7 are not modelled sources -> dropped
-    text = "5,79.882\n1,50.0\n4,200.0\n7,10.0\n"
+    text = "5,79.882,1\n1,50.0,1\n4,200.0,1\n7,10.0,1\n"
     rows = source_rows(text, "S1", source_indices=[2, 3, 4, 5, 6], cell_area=144.0)
     assert [(r.lith_index, r.distance_m) for r in rows] == [(5, 79.882), (4, 200.0)]
     assert all(r.site == "S1" and r.weight == 144.0 for r in rows)
 
 
 def test_source_rows_empty_when_no_sources():
-    rows = source_rows("1,50.0\n7,10.0\n", "S2", [2, 3, 4, 5, 6], 144.0)
+    rows = source_rows("1,50.0,1\n7,10.0,1\n", "S2", [2, 3, 4, 5, 6], 144.0)
     assert rows == []
 
 
+def test_source_rows_binary_mask_gives_uniform_cell_area():
+    # a binary mask stores value 1 -> weight is exactly cell_area (the special
+    # case of the general weight = cell_area * source_value)
+    rows = source_rows("5,79.882,1\n", "S1", [5], cell_area=144.0)
+    assert rows[0].weight == 144.0
+
+
+def test_source_rows_scalar_potential_scales_weight():
+    # a continuous [0, 1] potential scales the per-cell weight down
+    rows = source_rows("5,79.882,0.3\n", "S1", [5], cell_area=144.0)
+    assert rows[0].weight == pytest.approx(144.0 * 0.3)
+
+
 def test_write_source_cells_roundtrip(tmp_path):
-    rows = source_rows("5,79.882\n4,200.0\n", "S1", [4, 5], cell_area=144.0)
+    rows = source_rows("5,79.882,1\n4,200.0,1\n", "S1", [4, 5], cell_area=144.0)
     out = tmp_path / "source_cells.csv"
     n = write_source_cells(rows, str(out))
     assert n == 2
@@ -64,7 +92,7 @@ def test_parse_cat_attr_ignores_header():
 
 
 def test_write_distance_rounding(tmp_path):
-    rows = source_rows("5,79.8825\n", "S1", [5], cell_area=12.5)
+    rows = source_rows("5,79.8825,1\n", "S1", [5], cell_area=12.5)
     out = tmp_path / "sc.csv"
     write_source_cells(rows, str(out), distance_decimals=2)
     with open(out, newline="") as f:

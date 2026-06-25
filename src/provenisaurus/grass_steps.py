@@ -82,15 +82,21 @@ def site_distance_field(drainage, streams, e, n, dist_mode, *, tmp):
 
 
 def source_cells_stats(ws, source_mask, lithology, distmap, *, tmp):
-    """r.stats dump '<lith_index>,<distance>' for source cells in the site's
-    watershed (cells where both ``ws`` and ``source_mask`` are non-null)."""
+    """r.stats dump '<lith_index>,<distance>,<source_value>' for source cells in
+    the site's watershed (cells where both ``ws`` and ``source_mask`` are
+    non-null).  ``source_value`` is the ``source_mask`` cell value -- the per-cell
+    production potential (1 for a binary mask, in [0, 1] for a continuous one)."""
     src_lith = f"{tmp}_src_lith"
     src_dist = f"{tmp}_src_dist"
+    src_val = f"{tmp}_src_val"
     gs.mapcalc(f"{src_lith} = if(!isnull({ws}), if(!isnull({source_mask}), "
                f"{lithology}, null()), null())", overwrite=True, quiet=True)
     gs.mapcalc(f"{src_dist} = if(!isnull({ws}), if(!isnull({source_mask}), "
                f"{distmap}, null()), null())", overwrite=True, quiet=True)
-    return gs.read_command("r.stats", flags="1n", input=f"{src_lith},{src_dist}",
+    gs.mapcalc(f"{src_val} = if(!isnull({ws}), if(!isnull({source_mask}), "
+               f"{source_mask}, null()), null())", overwrite=True, quiet=True)
+    return gs.read_command("r.stats", flags="1n",
+                           input=f"{src_lith},{src_dist},{src_val}",
                            separator=",", quiet=True)
 
 

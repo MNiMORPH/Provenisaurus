@@ -16,7 +16,7 @@ from .emit import source_rows, write_source_cells, join_sites
 _TMP = "tmp_prov"
 _TMP_MAPS = [f"{_TMP}_ws", f"{_TMP}_streams", f"{_TMP}_dist_outlet",
              f"{_TMP}_dist_stream", f"{_TMP}_dist_chan",
-             f"{_TMP}_src_lith", f"{_TMP}_src_dist"]
+             f"{_TMP}_src_lith", f"{_TMP}_src_dist", f"{_TMP}_src_val"]
 
 
 def run(cfg: WorkflowConfig):
