@@ -28,7 +28,7 @@ class WorkflowConfig:
     drainage: str = "drainDir"
     streams: str = "streams"
     lithology: str = "lithology"          # per-cell class (lith_index) raster
-    source_mask: str = "source_mask"      # 1 where a cell is a clast source, else null
+    source_mask: str = "source_mask"      # per-cell source weight: 1 (binary) or [0,1] scalar; else null
     points: str = "points"                # RAW sample points (snapped internally)
     site_column: str = "site"
     # parameters

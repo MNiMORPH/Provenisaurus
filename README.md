@@ -29,7 +29,7 @@ data). All maps must share one projected GRASS location / region.
 |---|---|---|
 | `dem` | raster | elevation; sets the analysis region |
 | `lithology` | raster | per-cell class code (`lith_index`) — the classes you invert for |
-| `source_mask` | raster | `1` where a cell is a clast **source**, else null — *your* source-area definition (lithology ∩ a source criterion: mass-wasting, slope threshold, susceptibility, …) |
+| `source_mask` | raster | per-cell clast-**source** production weight, else null — `1` where a cell is a source (binary), or a continuous `[0,1]` "production potential"; *your* source-area definition (lithology ∩ a source criterion: mass-wasting, slope threshold, susceptibility, …) |
 | `points` | vector | **raw** sample sites (field coordinates) with a `site` attribute — Provenisaurus snaps them onto the network it builds |
 | `drainage`, `streams` | rasters | flow direction + channel network — **supply them, or** set `build_basemaps: true` to build them from the DEM (`r.watershed` + `r.stream.extract` at `stream_threshold`) |
 | `accumulation` | raster | flow accumulation — needed for snapping when *not* building base maps (built otherwise) |
@@ -49,7 +49,8 @@ needs a study-specific outlet, so it stays with the caller.
 
 **Output** — `source_cells.csv` (LF), one row per source cell:
 `site, lith_index, distance_m, weight`, i.e. the per-site distribution of source
-area (`weight` = cell area) vs. downstream transport distance, for CorraSaurus.
+area (`weight` = cell area × the cell's source potential — just cell area for a
+binary mask) vs. downstream transport distance, for CorraSaurus.
 
 **Assumptions** — `lithology` and `source_mask` are aligned to the DEM grid;
 everything is in one projected location. (Points need *not* be pre-snapped —
@@ -95,7 +96,7 @@ points) lives in the study repo, not here.
 Extracted from the Quebrada del Toro study via `git filter-repo` (history preserved).
 
 See [HANDOFF.md](HANDOFF.md) for design rationale — the agnostic source-map
-contract (binary now, planned 0–1 scalar "production potential"), the
+contract (binary or 0–1 scalar "production potential"), the
 GravelSource boundary, and open items.
 
 ## License
