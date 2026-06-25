@@ -13,30 +13,35 @@ import yaml
 class WorkflowConfig:
     """Inputs + parameters for the source-distance extraction (validated on init).
 
-    Names the existing GRASS maps the workflow reads (supplied by the caller /
-    a study's prep step) and the extraction parameters. See the README "Inputs"
-    section for the full contract: required maps (dem, lithology, source_mask,
-    raw points, and drainage+streams unless build_basemaps), the points' site
-    column, and the parameters (incl. snap_radius). Provenisaurus snaps the raw
-    points onto the network it builds; which sites to process is the caller's
-    choice (supply only those points) -- there is no in-basin filter here.
+    The caller supplies raw data + study choices (dem, lithology, source_mask,
+    raw points + their site column); Provenisaurus owns the DEM-derived flow
+    network (accumulation, drainage, streams) -- it builds those from the DEM,
+    reuses them if already present, and rebuilds on demand (rebuild_basemaps), so
+    they are named here but are *not* caller inputs. See the README "Inputs"
+    section for the full contract and the parameters (incl. snap_radius,
+    stream_threshold). Provenisaurus snaps the raw points onto the network it
+    builds; which sites to process is the caller's choice (supply only those
+    points) -- there is no in-basin filter here.
     """
 
-    # input GRASS maps (the caller / a study's prep builds these; named here)
+    # caller inputs (raw data + study choices)
     dem: str = "DEM"
-    accumulation: str = "flowAccum"
-    drainage: str = "drainDir"
-    streams: str = "streams"
     lithology: str = "lithology"          # per-cell class (lith_index) raster
     source_mask: str = "source_mask"      # per-cell source weight: 1 (binary) or [0,1] scalar; else null
     points: str = "points"                # RAW sample points (snapped internally)
     site_column: str = "site"
+    # flow-network maps Provenisaurus owns: built from the DEM, reused if present,
+    # rebuilt on demand. NOT caller inputs -- named here only so the maps
+    # Provenisaurus writes/reads are configurable.
+    accumulation: str = "flowAccum"
+    drainage: str = "drainDir"
+    streams: str = "streams"
     # parameters
     snap_radius: Optional[int] = 50       # r.stream.snap radius [cells]; None/0 = already on network
     stream_threshold: int = 10000         # r.stream.extract accumulation threshold [cells]
     source_indices: tuple = (2, 3, 4, 5, 6)
     dist_mode: str = "whole"              # "whole" (hillslope+channel) | "channel" (fluvial)
-    build_basemaps: bool = False          # (re)build flow routing + streams from the DEM
+    rebuild_basemaps: bool = False        # force-rebuild the flow network even if it already exists
     out_csv: str = "source_cells.csv"
 
     def __post_init__(self):

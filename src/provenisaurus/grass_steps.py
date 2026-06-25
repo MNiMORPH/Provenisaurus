@@ -16,6 +16,11 @@ def cell_area_m2() -> float:
     return float(g["ewres"]) * float(g["nsres"])
 
 
+def raster_exists(name) -> bool:
+    """True if a raster ``name`` is findable on the current mapset search path."""
+    return bool(gs.find_file(name, element="raster")["name"])
+
+
 def flow_routing(dem, accumulation, drainage, memory=8000):
     """r.watershed (SFD) -> flow accumulation + drainage direction."""
     gs.run_command("r.watershed", elevation=dem, accumulation=accumulation,

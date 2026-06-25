@@ -49,3 +49,16 @@ def test_from_yaml_rejects_unknown_keys(tmp_path):
     y.write_text("dem: x\nbogus_key: 1\n")
     with pytest.raises(ValueError):
         WorkflowConfig.from_yaml(str(y))
+
+
+def test_rebuild_basemaps_default_is_reuse():
+    assert WorkflowConfig().rebuild_basemaps is False
+
+
+def test_removed_build_basemaps_key_rejected(tmp_path):
+    # build_basemaps was dropped: Provenisaurus owns the flow network and reuses
+    # it if present (rebuild_basemaps forces a rebuild). An old key now errors.
+    y = tmp_path / "cfg.yml"
+    y.write_text("provenisaurus:\n  dem: x\n  build_basemaps: true\n")
+    with pytest.raises(ValueError):
+        WorkflowConfig.from_yaml(str(y))
