@@ -21,6 +21,12 @@ from typing import NamedTuple
 #: Long-format source-cell table columns.
 SOURCE_CELLS_HEADER = ("site", "lith_index", "distance_m", "weight")
 
+#: Tolerance for ``source_mask`` values straying outside [0, 1].  A value within
+#: this of a bound is treated as floating-point noise (e.g. a ``1.0000000000001``
+#: from an upstream ``x / max(x)`` rescale) and clamped to the bound; a value
+#: *beyond* it is a genuinely malformed map and still raises.
+_SOURCE_VALUE_EPS = 1e-6
+
 
 class SourceCell(NamedTuple):
     site: str
@@ -40,9 +46,13 @@ def parse_rstats_lines(lines):
     ``source_mask`` cell value: ``1`` for a binary mask, in ``[0, 1]`` for a
     continuous one).  Blank lines and any cell with a null marker (``*``) are
     skipped (``-n`` should already drop nulls, but be defensive).  ``source_value``
-    must lie in ``[0, 1]``; a value outside that range raises ``ValueError`` (the
-    source map is malformed -- callers wanting a different convention should adjust
-    the map, not the weight).
+    must lie in ``[0, 1]``: a value past the bound by more than
+    ``_SOURCE_VALUE_EPS`` raises ``ValueError`` (the source map is malformed --
+    callers wanting a different convention should adjust the map, not the weight),
+    but a value within that tolerance is treated as floating-point noise (e.g. a
+    ``1.0000000000001`` from an upstream ``x / max(x)`` rescale) and clamped to the
+    bound.  The guard still catches real errors (a ``1.5`` from a broken formula);
+    it just no longer trips on rounding.
     """
     for line in lines:
         line = line.strip()
@@ -55,10 +65,11 @@ def parse_rstats_lines(lines):
         if cls in ("", "*") or dist in ("", "*") or val in ("", "*"):
             continue
         value = float(val)
-        if not 0.0 <= value <= 1.0:
+        if value > 1.0 + _SOURCE_VALUE_EPS or value < -_SOURCE_VALUE_EPS:
             raise ValueError(
                 f"source_mask value {value!r} outside [0, 1] "
                 f"(lith_index {cls}, distance {dist})")
+        value = min(1.0, max(0.0, value))   # absorb last-bit float noise to the bound
         yield int(cls), float(dist), value
 
 

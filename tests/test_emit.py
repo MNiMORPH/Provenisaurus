@@ -34,6 +34,22 @@ def test_parse_rstats_rejects_negative_value():
         list(parse_rstats("5,79.882,-0.1\n"))
 
 
+def test_parse_rstats_clamps_float_noise_above_one():
+    # a 1.0000000000001 from an upstream x/max(x) rescale is float noise, not a
+    # malformed map: clamp to the bound rather than reject the whole extraction
+    assert list(parse_rstats("5,79.882,1.0000000000001\n")) == [(5, 79.882, 1.0)]
+
+
+def test_parse_rstats_clamps_tiny_negative_to_zero():
+    assert list(parse_rstats("5,79.882,-0.0000001\n")) == [(5, 79.882, 0.0)]
+
+
+def test_parse_rstats_still_raises_beyond_tolerance():
+    # past the bound by more than the tolerance -> still a genuine error
+    with pytest.raises(ValueError):
+        list(parse_rstats("5,79.882,1.00001\n"))
+
+
 def test_source_rows_filters_to_sources_and_tags():
     # lith 1 (conglomerate) and 7 are not modelled sources -> dropped
     text = "5,79.882,1\n1,50.0,1\n4,200.0,1\n7,10.0,1\n"
