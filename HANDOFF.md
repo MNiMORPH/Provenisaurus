@@ -177,15 +177,16 @@ Three stacked culprits, in order of severity:
   removed. Reuse-path regression still byte-for-byte identical. See "DEM
   post-processing" above. (Config schema change: a config still setting
   `build_basemaps` now errors — downstream Toro configs must drop it.)
-- [ ] **Toro-prep split (study side remaining; AW):** the study repo already has
-  the per-method `gis/` Provenisaurus configs, and `gis/extract_source_distances.sh`
-  has now been **deleted here** — preserved in git history as the provenance
-  reference, so nothing is lost. Remaining is study-side: capture the map-build
-  provenance (geology→`lithology`; Tofelde→`source_mask`; `src_thr`; KML→**raw**
-  `points` + `site`, *no* snap / *no* `in_toro` flag — Provenisaurus snaps, and
-  basin membership is the caller's point-selection, so the Campo Quijano outlet +
-  watershed stay caller-side) as scripts under `gravelsource/` in
-  `toro-clast-attrition`. Provenisaurus keeps every flow-network step.
+- [x] **Toro-prep split — done (2026-06-26):** the study repo has the per-method
+  `gis/` Provenisaurus configs, and `gis/extract_source_distances.sh` was **deleted
+  here** (preserved in git history). The once-proposed study-side step — capturing
+  the map-build provenance (geology→`lithology`; Tofelde→`source_mask`; `src_thr`;
+  KML→`points`) as `gravelsource/` scripts — was reviewed and judged **not needed**:
+  every recipe is a one-liner already recorded in GRASS history (`r.info -h`) + git +
+  config, and the real assets are the raw `geology`/`source_areas`/DEM, which are
+  backed up. See `toro-clast-attrition/gravelsource/HANDOFF.md` (resolved). The
+  boundary decisions stand: Provenisaurus snaps the raw points internally; basin
+  membership (the Campo Quijano outlet + watershed) stays caller-side.
 - [ ] **Channel heads:** `dist_mode=channel` works, but the channel network is a
   fixed area-threshold and the *fluvial* channel head is unresolved — tracked in
   [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1) (slope–area /
