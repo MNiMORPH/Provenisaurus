@@ -186,7 +186,9 @@ Three stacked culprits, in order of severity:
   fixed area-threshold and the *fluvial* channel head is unresolved — tracked in
   [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1) (slope–area /
   Passalacqua-GeoNet / Clubb-DrEICH / field maps; pluggable like `source_mask`).
-  Affects only `channel` runs.
+  Affects only `channel` runs. **Blocked on GRASS-channel-profiler** (the
+  channel-head method itself; in progress, AW); the Provenisaurus side is then just
+  the pluggable hook — a `channel_heads` map input mirroring `source_mask`.
 - [x] **Memory on large source maps (tier 1):** done — stream per-site writes +
   stream `r.stats` stdout (`pipe_command`); peak RAM bounded with byte-for-byte
   output preserved (Toro `whole` regression still matches, 694 MB peak RSS).
