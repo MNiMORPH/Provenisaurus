@@ -11,7 +11,7 @@ import grass.script as gs
 
 from . import grass_steps as G
 from .config import WorkflowConfig
-from .emit import source_rows, write_source_cells, join_sites
+from .emit import iter_source_rows, open_source_cells, join_sites
 
 _TMP = "tmp_prov"
 _TMP_MAPS = [f"{_TMP}_ws", f"{_TMP}_streams", f"{_TMP}_dist_outlet",
@@ -60,21 +60,25 @@ def run(cfg: WorkflowConfig):
         geom = G.points_geometry(cfg.points)
     sites = join_sites(geom, G.points_attr(cfg.points, cfg.site_column))
 
-    rows = []
-    try:
-        for e, n, site in sites:
-            distmap, _ws = G.site_distance_field(
-                cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP)
-            stats = G.source_cells_stats(
-                _ws, cfg.source_mask, cfg.lithology, distmap, tmp=_TMP)
-            rows.extend(source_rows(stats, site, cfg.source_indices, cell_area))
-    finally:
-        G.remove_maps(_TMP_MAPS)
-        if snapped_vec:
-            G.remove_vectors([snapped_vec])
+    # Stream each site's source cells straight to the CSV as r.stats produces
+    # them -- never accumulating the whole table in memory, so a source mask
+    # covering most of the map (hundreds of millions of cells) stays O(1).
+    with open_source_cells(cfg.out_csv) as sink:
+        try:
+            for e, n, site in sites:
+                distmap, _ws = G.site_distance_field(
+                    cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP)
+                with G.source_cells_stats_stream(
+                        _ws, cfg.source_mask, cfg.lithology, distmap, tmp=_TMP) as lines:
+                    for row in iter_source_rows(lines, site, cfg.source_indices,
+                                                cell_area):
+                        sink.write(row)
+        finally:
+            G.remove_maps(_TMP_MAPS)
+            if snapped_vec:
+                G.remove_vectors([snapped_vec])
 
-    n_rows = write_source_cells(rows, cfg.out_csv)
-    return n_rows, len(sites)
+    return sink.n, len(sites)
 
 
 def main(argv=None):

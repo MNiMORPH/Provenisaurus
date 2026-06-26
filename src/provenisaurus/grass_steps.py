@@ -7,7 +7,10 @@ These run inside a GRASS session; importing this module needs ``grass.script``.
 
 from __future__ import annotations
 
+import contextlib
+
 import grass.script as gs
+from grass.exceptions import CalledModuleError
 
 
 def cell_area_m2() -> float:
@@ -86,11 +89,9 @@ def site_distance_field(drainage, streams, e, n, dist_mode, *, tmp):
     return outlet, ws
 
 
-def source_cells_stats(ws, source_mask, lithology, distmap, *, tmp):
-    """r.stats dump '<lith_index>,<distance>,<source_value>' for source cells in
-    the site's watershed (cells where both ``ws`` and ``source_mask`` are
-    non-null).  ``source_value`` is the ``source_mask`` cell value -- the per-cell
-    production potential (1 for a binary mask, in [0, 1] for a continuous one)."""
+def _build_source_temp_maps(ws, source_mask, lithology, distmap, tmp):
+    """Mask lithology / distance / source-value to the site's source cells (where
+    both ``ws`` and ``source_mask`` are non-null); return the three map names."""
     src_lith = f"{tmp}_src_lith"
     src_dist = f"{tmp}_src_dist"
     src_val = f"{tmp}_src_val"
@@ -100,9 +101,39 @@ def source_cells_stats(ws, source_mask, lithology, distmap, *, tmp):
                f"{distmap}, null()), null())", overwrite=True, quiet=True)
     gs.mapcalc(f"{src_val} = if(!isnull({ws}), if(!isnull({source_mask}), "
                f"{source_mask}, null()), null())", overwrite=True, quiet=True)
-    return gs.read_command("r.stats", flags="1n",
+    return src_lith, src_dist, src_val
+
+
+@contextlib.contextmanager
+def source_cells_stats_stream(ws, source_mask, lithology, distmap, *, tmp):
+    """Stream the r.stats dump '<lith_index>,<distance>,<source_value>' for the
+    site's source cells, yielding an iterator of decoded text lines (one per
+    source cell).
+
+    ``source_value`` is the ``source_mask`` cell value -- the per-cell production
+    potential (1 for a binary mask, in [0, 1] for a continuous one).  Lines come
+    straight off ``r.stats``' stdout via a pipe, so a watershed covering most of
+    the map (a full-outcrop source mask -> hundreds of millions of cells) is never
+    buffered as a single string in memory (the cause of an earlier session OOM).
+    """
+    src_lith, src_dist, src_val = _build_source_temp_maps(
+        ws, source_mask, lithology, distmap, tmp)
+    proc = gs.pipe_command("r.stats", flags="1n",
                            input=f"{src_lith},{src_dist},{src_val}",
                            separator=",", quiet=True)
+    try:
+        yield (line.decode() for line in proc.stdout)
+    finally:
+        proc.stdout.close()
+        returncode = proc.wait()
+    # pipe_command (unlike read_command) does not check this for us; a non-zero
+    # r.stats exit after we've consumed its output would otherwise pass silently
+    # as a truncated CSV.  (Reached only on normal exit: if the consumer raised,
+    # that exception propagates through the finally instead.)
+    if returncode != 0:
+        raise CalledModuleError(module="r.stats",
+                                code=f"{src_lith},{src_dist},{src_val}",
+                                returncode=returncode)
 
 
 def remove_maps(names):
