@@ -116,49 +116,46 @@ The GRASS path is verified not by unit tests but by **regression**: it reproduce
 the original shell extraction's `source_cells.csv` byte-for-byte (3,176,159 rows,
 Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
 
-## Memory: generating a large (all-outcrop) source map
+## Memory: generating a large (all-outcrop) source map — resolved
 
-The extraction holds the **entire output in memory** before writing, so peak RAM
-scales with the *total* row count — fine for the Tofelde-mapping mask (3.2 M
-rows), survivable for slope-threshold (39.6 M), but the all-outcrop mask
-(~100 M+ rows) OOMs the machine. Three stacked culprits, in order of severity:
+*History, kept because it explains why the emit path is shaped the way it is.*
 
-1. **Global row accumulator (the culprit).** `workflow.run` builds one list
-   `rows` across *all* sites (`workflow.py:63,70`) and writes it in a single
-   `write_source_cells` at the end (`:76`). Every source cell is a live
-   `SourceCell` object until then — ~100 M+ objects ≈ tens of GB. Peak scales with
-   the *whole* CSV, not one site.
-2. **Whole-stdout capture, per site.** `source_cells_stats` uses
-   `gs.read_command("r.stats", …)` (`grass_steps.py:103`), which buffers a site's
-   *entire* `r.stats` dump into one Python string; `parse_rstats` then
-   `splitlines()` it into a second full copy (`emit.py:43`). For the largest site
-   under all-outcrop that's several GB, held in duplicate, on top of (1).
-3. **Root amplifier: `r.stats -1`.** `flags="1n"` (`grass_steps.py:103`) prints
-   **one line per cell**, no aggregation — this is what makes the row count
-   explode in the first place.
+**The bug.** The extraction used to hold the **entire output in memory** before
+writing, so peak RAM scaled with the *total* row count — fine for the
+Tofelde-mapping mask (3.2 M rows), survivable for slope-threshold (39.6 M), but the
+all-outcrop mask (~100 M+ rows) OOM'd the machine (a full desktop-session crash).
+Three stacked culprits, in order of severity:
 
-### Fix — tiered
+1. **Global row accumulator (the dominant one).** `workflow.run` built one `rows`
+   list across *all* sites and wrote it in a single `write_source_cells` at the
+   end. Every source cell was a live `SourceCell` until then — ~100 M+ objects ≈
+   tens of GB; peak scaled with the *whole* CSV, not one site.
+2. **Whole-stdout capture, per site.** `source_cells_stats` used
+   `gs.read_command("r.stats", …)`, buffering a site's *entire* `r.stats` dump into
+   one string, which `parse_rstats` then `splitlines()` into a second full copy —
+   several GB for the largest site under all-outcrop, on top of (1).
+3. **Root amplifier: `r.stats -1`.** `flags="1n"` prints one line per cell, no
+   aggregation — what made the row count explode in the first place.
 
-- **Tier 1 — bound memory, no contract change (preserves byte-for-byte).**
-  (a) Stream per-site: open `out_csv` once and write each site's rows as produced,
-  then drop them — bounds the accumulator to one site instead of all sites
-  (`write_source_cells`, `emit.py:114`, already takes any iterable).
-  (b) Stream `r.stats` stdout line-by-line (`Popen`/`PIPE`, iterate) instead of
-  `read_command`'s full buffer; `parse_rstats` is *already* a generator
-  (`emit.py:31`), so feed it the line iterator and never materialize the per-site
-  string. Together these cap peak RAM at roughly one site's rows, with **identical
-  output rows/order** — the regression (3,176,159 rows, matching MD5) must still
-  pass. This is what makes all-outcrop generation possible at all.
-- **Tier 2 — shrink the artifact (changes the output; gated by the regression).**
-  Aggregate at emit (drop `-1` / bin distance to a width ≤ CorraSaurus's
-  `reduce_cells` bin, keeping the weight-mean distance per bin) so the CSV is
-  ~10⁴–10⁵ rows/site instead of one-per-cell. This is the "extraction-side
-  aggregation" referenced from `CorraSaurus/HANDOFF.md` and the
-  `toro-clast-attrition` handoffs; it fixes **disk + I/O + Dropbox-sync**, not
-  just memory — but it must be a **new emit mode beside** the byte-for-byte path
-  (it changes row count/values), and its binning semantics must agree with
-  CorraSaurus `reduce_cells`. Sequence it *after* tier 1 and after the CorraSaurus
-  streaming-load fix.
+**The fix — both tiers landed** (see the Status list below):
+
+- **Tier 1 — bound memory, output byte-for-byte unchanged.** `workflow.run` opens
+  `out_csv` once and streams each site's rows straight to disk (no cross-site
+  accumulator), and `grass_steps.source_cells_stats_stream` reads `r.stats` over a
+  `pipe_command` line by line (raising on a non-zero exit, which `read_command`
+  used to check) instead of buffering the whole dump. Peak RAM is now O(1) in the
+  row count; the Toro `whole` regression stays byte-for-byte identical
+  (3,176,159 rows, matching MD5; 694 MB peak RSS).
+- **Tier 2 — emit the histogram, so the giant table never exists.** By default the
+  workflow emits the per-`(site, lith, distance-bin)` histogram
+  (`emit.histogram_rows`, `bin_width_m` default 12 m = a DEM cell) — CorraSaurus's
+  `reduce_cells` applied at the source — collapsing one-row-per-cell to
+  ~10⁴–10⁵ bins/site (~540× fewer rows; the all-outcrop CSV drops from GBs to a few
+  MB). Verified **bit-exact** against `corrasaurus.model.reduce_cells` on the
+  39.6 M-row threshold table; `bin_width_m: null` falls back to the raw per-cell
+  table (the byte-for-byte path). Because the on-disk artifact is now small, the
+  once-proposed CorraSaurus read-side streaming-load fix is moot. See
+  `MEMORY-TODO.md` for the distilled record.
 
 ## Status / open items
 
@@ -176,12 +173,15 @@ rows), survivable for slope-threshold (39.6 M), but the all-outcrop mask
   removed. Reuse-path regression still byte-for-byte identical. See "DEM
   post-processing" above. (Config schema change: a config still setting
   `build_basemaps` now errors — downstream Toro configs must drop it.)
-- [ ] **Toro-prep split:** move the Toro-specific imports to the study repo, then
-  delete `gis/extract_source_distances.sh` (retained as reference). Exact scope:
-  geology→`lithology`; Tofelde→`source_mask`; KML→**raw** `points` (+ `site`) with
-  *no* snap and *no* `in_toro` flag (Provenisaurus snaps; basin membership is the
-  caller's point-selection, so the Campo Quijano outlet + watershed stay
-  caller-side). Provenisaurus keeps every flow-network step.
+- [ ] **Toro-prep split (study side remaining; AW):** the study repo already has
+  the per-method `gis/` Provenisaurus configs, and `gis/extract_source_distances.sh`
+  has now been **deleted here** — preserved in git history as the provenance
+  reference, so nothing is lost. Remaining is study-side: capture the map-build
+  provenance (geology→`lithology`; Tofelde→`source_mask`; `src_thr`; KML→**raw**
+  `points` + `site`, *no* snap / *no* `in_toro` flag — Provenisaurus snaps, and
+  basin membership is the caller's point-selection, so the Campo Quijano outlet +
+  watershed stay caller-side) as scripts under `gravelsource/` in
+  `toro-clast-attrition`. Provenisaurus keeps every flow-network step.
 - [ ] **Channel heads:** `dist_mode=channel` works, but the channel network is a
   fixed area-threshold and the *fluvial* channel head is unresolved — tracked in
   [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1) (slope–area /
