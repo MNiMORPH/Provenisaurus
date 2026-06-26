@@ -116,6 +116,50 @@ The GRASS path is verified not by unit tests but by **regression**: it reproduce
 the original shell extraction's `source_cells.csv` byte-for-byte (3,176,159 rows,
 Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
 
+## Memory: generating a large (all-outcrop) source map
+
+The extraction holds the **entire output in memory** before writing, so peak RAM
+scales with the *total* row count — fine for the Tofelde-mapping mask (3.2 M
+rows), survivable for slope-threshold (39.6 M), but the all-outcrop mask
+(~100 M+ rows) OOMs the machine. Three stacked culprits, in order of severity:
+
+1. **Global row accumulator (the culprit).** `workflow.run` builds one list
+   `rows` across *all* sites (`workflow.py:63,70`) and writes it in a single
+   `write_source_cells` at the end (`:76`). Every source cell is a live
+   `SourceCell` object until then — ~100 M+ objects ≈ tens of GB. Peak scales with
+   the *whole* CSV, not one site.
+2. **Whole-stdout capture, per site.** `source_cells_stats` uses
+   `gs.read_command("r.stats", …)` (`grass_steps.py:103`), which buffers a site's
+   *entire* `r.stats` dump into one Python string; `parse_rstats` then
+   `splitlines()` it into a second full copy (`emit.py:43`). For the largest site
+   under all-outcrop that's several GB, held in duplicate, on top of (1).
+3. **Root amplifier: `r.stats -1`.** `flags="1n"` (`grass_steps.py:103`) prints
+   **one line per cell**, no aggregation — this is what makes the row count
+   explode in the first place.
+
+### Fix — tiered
+
+- **Tier 1 — bound memory, no contract change (preserves byte-for-byte).**
+  (a) Stream per-site: open `out_csv` once and write each site's rows as produced,
+  then drop them — bounds the accumulator to one site instead of all sites
+  (`write_source_cells`, `emit.py:114`, already takes any iterable).
+  (b) Stream `r.stats` stdout line-by-line (`Popen`/`PIPE`, iterate) instead of
+  `read_command`'s full buffer; `parse_rstats` is *already* a generator
+  (`emit.py:31`), so feed it the line iterator and never materialize the per-site
+  string. Together these cap peak RAM at roughly one site's rows, with **identical
+  output rows/order** — the regression (3,176,159 rows, matching MD5) must still
+  pass. This is what makes all-outcrop generation possible at all.
+- **Tier 2 — shrink the artifact (changes the output; gated by the regression).**
+  Aggregate at emit (drop `-1` / bin distance to a width ≤ CorraSaurus's
+  `reduce_cells` bin, keeping the weight-mean distance per bin) so the CSV is
+  ~10⁴–10⁵ rows/site instead of one-per-cell. This is the "extraction-side
+  aggregation" referenced from `CorraSaurus/HANDOFF.md` and the
+  `toro-clast-attrition` handoffs; it fixes **disk + I/O + Dropbox-sync**, not
+  just memory — but it must be a **new emit mode beside** the byte-for-byte path
+  (it changes row count/values), and its binning semantics must agree with
+  CorraSaurus `reduce_cells`. Sequence it *after* tier 1 and after the CorraSaurus
+  streaming-load fix.
+
 ## Status / open items
 
 - [x] Python workflow (config + wrappers + pure emit core), regression-verified.
@@ -143,3 +187,12 @@ Quebrada del Toro), both for `whole` distances and for the snap-from-raw path.
   [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1) (slope–area /
   Passalacqua-GeoNet / Clubb-DrEICH / field maps; pluggable like `source_mask`).
   Affects only `channel` runs.
+- [x] **Memory on large source maps (tier 1):** done — stream per-site writes +
+  stream `r.stats` stdout (`pipe_command`); peak RAM bounded with byte-for-byte
+  output preserved (Toro `whole` regression still matches, 694 MB peak RSS).
+- [x] **Extraction-side aggregation (tier 2):** done — `emit.histogram_rows` emits
+  the per-`(site, lith, distance-bin)` histogram by default (`bin_width_m`, 12 m),
+  CorraSaurus's `reduce_cells` applied at the source: verified bit-exact to it on
+  the 39.6 M-row threshold table, ~540× fewer rows. `bin_width_m: null` keeps the
+  byte-for-byte per-cell path. The CorraSaurus streaming-load fix is now moot (no
+  big CSV to read). See `MEMORY-TODO.md` for the distilled record.

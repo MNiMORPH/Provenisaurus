@@ -54,12 +54,19 @@ needs a study-specific outlet, so it stays with the caller.
 - `snap_radius` — `r.stream.snap` radius [cells] for snapping raw points onto the network; `null`/`0` if the points are already on it.
 - `stream_threshold` — accumulation threshold [cells] for stream extraction (used when the flow network is built/rebuilt).
 - `rebuild_basemaps` — force-rebuild the flow network even if it already exists (default: reuse if present).
+- `bin_width_m` — distance-bin width [m] for the emitted histogram (default `12` = a DEM cell); `null` emits the raw one-row-per-cell table.
 - `out_csv` — output path.
 
-**Output** — `source_cells.csv` (LF), one row per source cell:
-`site, lith_index, distance_m, weight`, i.e. the per-site distribution of source
-area (`weight` = cell area × the cell's source potential — just cell area for a
-binary mask) vs. downstream transport distance, for CorraSaurus.
+**Output** — `source_cells.csv` (LF): `site, lith_index, distance_m, weight`, the
+per-site distribution of source production (`weight` = cell area × the cell's source
+potential — just cell area for a binary mask) vs. downstream transport distance, for
+CorraSaurus. By default the rows are a **per-`(site, lith_index, distance-bin)`
+histogram** (`bin_width_m`, default 12 m = a DEM cell): cells in a bin are collapsed
+to their summed `weight` at the weight-mean `distance_m`. This is CorraSaurus's own
+`reduce_cells` reduction applied at the source — algebraically the same input to the
+inversion (verified bit-exact), but ~10²–10³× fewer rows, so a source mask covering
+most of the map stays a few MB instead of multiple GB. `bin_width_m: null` instead
+emits the raw one-row-per-source-cell table (the byte-for-byte regression path).
 
 **Assumptions** — `lithology` and `source_mask` are aligned to the DEM grid;
 everything is in one projected location. (Points need *not* be pre-snapped —
@@ -85,6 +92,7 @@ provenisaurus:
   dist_mode: whole          # or: channel
   stream_threshold: 10000   # cells; for building the stream network
   rebuild_basemaps: false   # true -> rebuild the flow network even if present
+  bin_width_m: 12           # distance-bin width [m]; null -> raw one row per cell
   out_csv: source_cells.csv
 ```
 
@@ -94,8 +102,10 @@ The GRASS-free glue (`provenisaurus.emit`, `provenisaurus.config`) is unit-teste
 ## Status
 
 The Python workflow (`config` + thin GRASS wrappers + the pure `emit` core) is
-done and **regression-verified** to reproduce the original shell extraction
-byte-for-byte (3.18M source cells, Quebrada del Toro). The reference shell
+done. Its raw per-cell path (`bin_width_m: null`) is **regression-verified** to
+reproduce the original shell extraction byte-for-byte (3.18M source cells, Quebrada
+del Toro); the default histogram emit is verified **bit-exact** against CorraSaurus's
+`reduce_cells` on the same data. The reference shell
 prototype `gis/extract_source_distances.sh` is retained for now; the
 **Toro-specific input prep** (geology → `lithology`, the source-area mask, snapped
 points) lives in the study repo, not here.
