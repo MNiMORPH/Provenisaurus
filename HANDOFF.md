@@ -46,7 +46,11 @@ cell value.
 - **Continuous [0,1].** A "clast-generation potential" map → a cell that is "0.3
   likely a source" contributes 0.3× the weight. Values are **enforced to [0,1]**:
   an out-of-range value raises (the map is malformed; callers wanting a different
-  convention should adjust the map, not the weight — A. Wickert).
+  convention should adjust the map, not the weight — A. Wickert). Float-precision
+  noise just past a bound — within `_SOURCE_VALUE_EPS` (`1e-6`), e.g. a
+  `1.0000000000001` from an upstream `x/max(x)` rescale — is clamped to the bound
+  instead of raising; only an excursion beyond the tolerance counts as malformed
+  (issue #2).
 
 There is no mode flag — binary is just the `source_value == 1` special case.
 Implemented in the `Support scalar [0,1] source maps` commit:
