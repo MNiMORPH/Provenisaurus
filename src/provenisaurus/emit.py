@@ -81,6 +81,42 @@ def iter_source_rows(lines, site: str, source_indices, cell_area: float):
             yield SourceCell(site, cls, dist, cell_area * value)
 
 
+def histogram_rows(lines, site: str, source_indices, cell_area: float,
+                   bin_width_m: float):
+    """Stream one site's source cells into a per-(lith, distance-bin) histogram.
+
+    This is CorraSaurus's ``model.reduce_cells`` reduction applied at the source:
+    each cell is dropped into bin ``floor(distance / bin_width_m)``; per bin we
+    keep the **summed** weight ``W = sum(cell_area * source_value)`` and the
+    **weight-mean** distance ``sum(w*d) / W``.  Yields one ``SourceCell`` per
+    non-empty (lith, bin) -- identical four-column schema as the per-cell path, so
+    the consumer is unchanged, but ~one-row-per-cell collapses to ~10^4-10^5 bins
+    (the cause of the multi-GB CSV is gone).  Summing equal-distance weights before
+    ``exp(-d/l)`` is algebraically exact; the residual is ``O((d/l * bin)^2)`` --
+    negligible at ``bin_width_m`` <= the DEM cell size.
+
+    Holds one site's bins (`O(#bins)`, tiny) -- a bin can't be emitted until the
+    site's cells are all seen -- then yields them in a deterministic (lith, bin)
+    order and releases them.
+    """
+    sources = {int(i) for i in source_indices}
+    acc: dict = {}                       # (lith_index, dbin) -> [W, sum(w*d)]
+    for cls, dist, value in parse_rstats_lines(lines):
+        if cls not in sources:
+            continue
+        w = cell_area * value
+        key = (cls, int(dist // bin_width_m))
+        slot = acc.get(key)
+        if slot is None:
+            acc[key] = [w, w * dist]
+        else:
+            slot[0] += w
+            slot[1] += w * dist
+    for cls, dbin in sorted(acc):
+        weight, wd = acc[(cls, dbin)]
+        yield SourceCell(site, cls, wd / weight, weight)
+
+
 def source_rows(stats_text: str, site: str, source_indices, cell_area: float):
     """Source-cell rows for one site (eager list; pure/tested entry point).
 

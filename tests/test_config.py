@@ -55,6 +55,16 @@ def test_rebuild_basemaps_default_is_reuse():
     assert WorkflowConfig().rebuild_basemaps is False
 
 
+def test_bin_width_default_and_validation():
+    assert WorkflowConfig().bin_width_m == 12.0          # histogram emit by default
+    assert WorkflowConfig(bin_width_m=None).bin_width_m is None   # raw per-cell path
+    assert WorkflowConfig(bin_width_m=100).bin_width_m == 100.0   # coerced to float
+    with pytest.raises(ValueError):
+        WorkflowConfig(bin_width_m=0)
+    with pytest.raises(ValueError):
+        WorkflowConfig(bin_width_m=-5)
+
+
 def test_removed_build_basemaps_key_rejected(tmp_path):
     # build_basemaps was dropped: Provenisaurus owns the flow network and reuses
     # it if present (rebuild_basemaps forces a rebuild). An old key now errors.

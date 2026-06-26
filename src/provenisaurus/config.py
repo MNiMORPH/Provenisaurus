@@ -42,6 +42,14 @@ class WorkflowConfig:
     source_indices: tuple = (2, 3, 4, 5, 6)
     dist_mode: str = "whole"              # "whole" (hillslope+channel) | "channel" (fluvial)
     rebuild_basemaps: bool = False        # force-rebuild the flow network even if it already exists
+    # Distance-bin width [m] for the emitted histogram: source cells are collapsed
+    # per (site, lith_index, floor(distance/bin_width_m)) into summed weight at the
+    # weight-mean distance -- CorraSaurus's own reduce_cells reduction, applied at
+    # the source so we never write the ~one-row-per-cell table (which reaches GBs
+    # for large source masks). Default 12.0 = the DEM cell size (sub-pixel distance
+    # is meaningless; CorraSaurus certifies this lossless to 1e-6). None = emit the
+    # raw one-row-per-cell table (the byte-for-byte path; only for the regression).
+    bin_width_m: Optional[float] = 12.0
     out_csv: str = "source_cells.csv"
 
     def __post_init__(self):
@@ -52,6 +60,10 @@ class WorkflowConfig:
             raise ValueError("source_indices must be non-empty")
         if self.snap_radius is not None and int(self.snap_radius) < 0:
             raise ValueError("snap_radius must be >= 0 (or None to skip snapping)")
+        if self.bin_width_m is not None:
+            self.bin_width_m = float(self.bin_width_m)
+            if self.bin_width_m <= 0:
+                raise ValueError("bin_width_m must be > 0 (or None to skip binning)")
 
     @classmethod
     def from_yaml(cls, path) -> "WorkflowConfig":

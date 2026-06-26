@@ -11,7 +11,7 @@ import grass.script as gs
 
 from . import grass_steps as G
 from .config import WorkflowConfig
-from .emit import iter_source_rows, open_source_cells, join_sites
+from .emit import histogram_rows, iter_source_rows, open_source_cells, join_sites
 
 _TMP = "tmp_prov"
 _TMP_MAPS = [f"{_TMP}_ws", f"{_TMP}_streams", f"{_TMP}_dist_outlet",
@@ -61,8 +61,18 @@ def run(cfg: WorkflowConfig):
     sites = join_sites(geom, G.points_attr(cfg.points, cfg.site_column))
 
     # Stream each site's source cells straight to the CSV as r.stats produces
-    # them -- never accumulating the whole table in memory, so a source mask
-    # covering most of the map (hundreds of millions of cells) stays O(1).
+    # them -- never accumulating the whole table in memory.  By default we emit
+    # the per-(lith, distance-bin) histogram (bin_width_m), CorraSaurus's own
+    # reduce_cells applied at the source, so a source mask covering most of the
+    # map collapses to ~10^4-10^5 bins/site instead of a multi-GB per-cell table.
+    # bin_width_m=None emits the raw one-row-per-cell table (the byte-for-byte
+    # path), streamed at O(1).
+    def site_rows(lines, site):
+        if cfg.bin_width_m is None:
+            return iter_source_rows(lines, site, cfg.source_indices, cell_area)
+        return histogram_rows(lines, site, cfg.source_indices, cell_area,
+                              cfg.bin_width_m)
+
     with open_source_cells(cfg.out_csv) as sink:
         try:
             for e, n, site in sites:
@@ -70,8 +80,7 @@ def run(cfg: WorkflowConfig):
                     cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP)
                 with G.source_cells_stats_stream(
                         _ws, cfg.source_mask, cfg.lithology, distmap, tmp=_TMP) as lines:
-                    for row in iter_source_rows(lines, site, cfg.source_indices,
-                                                cell_area):
+                    for row in site_rows(lines, site):
                         sink.write(row)
         finally:
             G.remove_maps(_TMP_MAPS)
