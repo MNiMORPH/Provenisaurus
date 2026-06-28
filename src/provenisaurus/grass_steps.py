@@ -62,18 +62,27 @@ def points_attr(vector, column):
                            separator="|", flags="c", quiet=True)
 
 
-def site_distance_field(drainage, streams, e, n, dist_mode, *, tmp):
+def site_distance_field(drainage, streams, e, n, dist_mode, *, tmp,
+                        channel_network=None):
     """Per-site watershed + downstream-distance field; return (distance_map, ws).
 
     ``whole``   : flow distance to the outlet (hillslope + channel).
     ``channel`` : dist-to-outlet - dist-to-stream, clamped >= 0 (fluvial only).
     Writes temporary maps prefixed by ``tmp`` (removed by the caller).
+
+    In ``channel`` mode the split is taken against ``channel_network`` (the
+    fluvial domain, e.g. from r.fluvial.channelheads) when given, so the
+    channel-only distance starts at the supplied channel heads; with
+    ``channel_network=None`` it falls back to the extracted ``streams`` (the
+    legacy fixed-threshold proxy).  ``whole`` mode always uses ``streams`` and is
+    unaffected.
     """
     ws = f"{tmp}_ws"
     gs.run_command("r.water.outlet", input=drainage, output=ws,
                    coordinates=f"{e},{n}", overwrite=True, quiet=True)
+    net = channel_network if (dist_mode == "channel" and channel_network) else streams
     streams_ws = f"{tmp}_streams"
-    gs.mapcalc(f"{streams_ws} = {streams} * {ws}", overwrite=True, quiet=True)
+    gs.mapcalc(f"{streams_ws} = {net} * {ws}", overwrite=True, quiet=True)
     outlet = f"{tmp}_dist_outlet"
     gs.run_command("r.stream.distance", flags="o", stream_rast=streams_ws,
                    direction=drainage, method="downstream", distance=outlet,
