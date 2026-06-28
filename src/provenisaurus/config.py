@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
@@ -30,26 +30,38 @@ class WorkflowConfig:
     source_mask: str = "source_mask"      # per-cell source weight: 1 (binary) or [0,1] scalar; else null
     points: str = "points"                # RAW sample points (snapped internally)
     site_column: str = "site"
-    # Fluvial channel network for dist_mode="channel": a raster naming the channel
-    # cells (the fluvial domain), against which the channel-only distance is split.
-    # A pluggable study input mirroring source_mask -- Provenisaurus stays agnostic
-    # about *where channels begin*; you supply the network. Built by
-    # r.fluvial.channelheads (recommended method=dreich, DrEICH morphological heads),
-    # which is the single author of the channel network and its structure. None
-    # falls back to the internally-extracted stream_threshold network -- the legacy
-    # fixed-accumulation-threshold proxy for the channel head (see issue #1).
-    channel_network: Optional[str] = None
     # flow-network maps Provenisaurus owns: built from the DEM, reused if present,
     # rebuilt on demand. NOT caller inputs -- named here only so the maps
     # Provenisaurus writes/reads are configurable.
     accumulation: str = "flowAccum"
     drainage: str = "drainDir"
     streams: str = "streams"
+    # Channel network for dist_mode="channel" (the fluvial domain against which the
+    # channel-only distance is split). Provenisaurus owns it too: built once via
+    # r.fluvial.channelheads (channel_head_method="dreich"), routed on `drainage` so
+    # its D8 paths coincide with the cells the distance routing uses, reused if
+    # present, rebuilt with the flow network. Unused in dist_mode="whole" and when
+    # channel_head_method="threshold" (which splits against `streams` directly -- the
+    # legacy fixed-accumulation-threshold proxy for the channel head, issue #1).
+    channel_network: str = "channel_network"
     # parameters
     snap_radius: Optional[int] = 50       # r.stream.snap radius [cells]; None/0 = already on network
     stream_threshold: int = 10000         # r.stream.extract accumulation threshold [cells]
     source_indices: tuple = (2, 3, 4, 5, 6)
     dist_mode: str = "whole"              # "whole" (hillslope+channel) | "channel" (fluvial)
+    # How dist_mode="channel" locates the channel head -- where the fluvial channel
+    # begins, the dominant lever on the channel-variant attrition lengths (issue #1).
+    # "dreich": DrEICH morphological channel heads via r.fluvial.channelheads, built
+    # into `channel_network`. "threshold": the fixed stream_threshold network (the
+    # legacy accumulation-threshold proxy). Swappable so the channel variant can be
+    # sensitivity-tested across criteria.
+    channel_head_method: str = "dreich"   # "dreich" | "threshold"
+    # Extra options forwarded verbatim to r.fluvial.channelheads (method=dreich),
+    # e.g. {window_radius: 7, m_over_n: 0.525, threshold: 100, c: true}. elevation,
+    # direction (=drainage) and raster_network (=channel_network) are wired by
+    # Provenisaurus; everything else passes through (a truthy `c` -> the -c
+    # full-basin flag). The module validates these; empty = its own defaults.
+    channelheads: dict = field(default_factory=dict)
     rebuild_basemaps: bool = False        # force-rebuild the flow network even if it already exists
     # Distance-bin width [m] for the emitted histogram: source cells are collapsed
     # per (site, lith_index, floor(distance/bin_width_m)) into summed weight at the
@@ -65,6 +77,12 @@ class WorkflowConfig:
         self.source_indices = tuple(int(i) for i in self.source_indices)
         if self.dist_mode not in ("whole", "channel"):
             raise ValueError(f"dist_mode must be 'whole' or 'channel', got {self.dist_mode!r}")
+        if self.channel_head_method not in ("dreich", "threshold"):
+            raise ValueError("channel_head_method must be 'dreich' or 'threshold', "
+                             f"got {self.channel_head_method!r}")
+        if not isinstance(self.channelheads, dict):
+            raise ValueError("channelheads must be a mapping of r.fluvial.channelheads "
+                             f"options, got {type(self.channelheads).__name__}")
         if not self.source_indices:
             raise ValueError("source_indices must be non-empty")
         if self.snap_radius is not None and int(self.snap_radius) < 0:
