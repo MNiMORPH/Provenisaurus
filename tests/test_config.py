@@ -55,21 +55,40 @@ def test_rebuild_basemaps_default_is_reuse():
     assert WorkflowConfig().rebuild_basemaps is False
 
 
-def test_channel_network_default_is_none():
-    # None -> fall back to the internally-extracted stream_threshold network.
-    assert WorkflowConfig().channel_network is None
+def test_channel_defaults():
+    c = WorkflowConfig()
+    assert c.channel_network == "channel_network"   # owned, build-or-reuse map
+    assert c.channel_head_method == "dreich"
+    assert c.channelheads == {}
 
 
-def test_channel_network_from_yaml(tmp_path):
+def test_channel_head_method_validated():
+    with pytest.raises(ValueError):
+        WorkflowConfig(channel_head_method="lidar")
+
+
+def test_channelheads_must_be_mapping():
+    with pytest.raises(ValueError):
+        WorkflowConfig(channelheads=[1, 2])
+
+
+def test_channel_config_from_yaml(tmp_path):
     y = tmp_path / "cfg.yml"
     y.write_text(
         "provenisaurus:\n"
         "  dem: tandemx_toro\n"
         "  dist_mode: channel\n"
+        "  channel_head_method: dreich\n"
         "  channel_network: fluvial_net\n"
+        "  channelheads:\n"
+        "    window_radius: 7\n"
+        "    m_over_n: 0.525\n"
+        "    c: true\n"
     )
     c = WorkflowConfig.from_yaml(str(y))
     assert c.channel_network == "fluvial_net"
+    assert c.channel_head_method == "dreich"
+    assert c.channelheads == {"window_radius": 7, "m_over_n": 0.525, "c": True}
 
 
 def test_bin_width_default_and_validation():
