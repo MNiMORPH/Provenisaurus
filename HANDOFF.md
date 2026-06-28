@@ -160,10 +160,13 @@ Tracked in GitHub issues; everything else above is implemented and verified
   legacy proxy). The criterion itself lives **outside** Provenisaurus: the channel
   network is authored by `r.fluvial.channelheads`
   ([GRASS-fluvial-profiler](https://github.com/MNiMORPH/GRASS-fluvial-profiler),
-  recommended `method=lsdtt` — DrEICH morphological heads), which is the single
-  author of the channel network and its structure. Affects only `channel` runs.
-  Consistency note: the supplied network is used as the channel mask while distances
-  are routed along Provenisaurus's own `drainDir`, so build it on the same DEM/flow
-  routing. Remaining (issue acceptance, a *study*-repo task, not Provenisaurus
-  code): a sensitivity test of the inverted attrition lengths over the channel-head
-  criterion for the `channel` variant.
+  recommended `method=dreich` — DrEICH morphological heads), which is the single
+  author of the channel network and its structure. It emits the network directly as
+  a raster (`raster_network=`, a CELL stream map), which is what `channel_network`
+  consumes. Affects only `channel` runs. Consistency note: the supplied network is
+  used as the channel mask while distances are routed along Provenisaurus's own
+  `drainDir`, so the two must share a routing convention — feed that same `drainDir`
+  to r.fluvial.channelheads via its `direction=` input (r.watershed encoding) so the
+  network is routed on the identical D8 directions. Remaining (issue acceptance, a
+  *study*-repo task, not Provenisaurus code): a sensitivity test of the inverted
+  attrition lengths over the channel-head criterion for the `channel` variant.

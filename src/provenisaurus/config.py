@@ -34,7 +34,7 @@ class WorkflowConfig:
     # cells (the fluvial domain), against which the channel-only distance is split.
     # A pluggable study input mirroring source_mask -- Provenisaurus stays agnostic
     # about *where channels begin*; you supply the network. Built by
-    # r.fluvial.channelheads (recommended method=lsdtt, DrEICH morphological heads),
+    # r.fluvial.channelheads (recommended method=dreich, DrEICH morphological heads),
     # which is the single author of the channel network and its structure. None
     # falls back to the internally-extracted stream_threshold network -- the legacy
     # fixed-accumulation-threshold proxy for the channel head (see issue #1).
