@@ -50,7 +50,8 @@ needs a study-specific outlet, so it stays with the caller.
 
 **Parameters**
 - `source_indices` — which `lith_index` values are modelled sources (others dropped).
-- `dist_mode` — `whole` (hillslope + channel) or `channel` (fluvial-only: dist-to-outlet − dist-to-stream).
+- `dist_mode` — `whole` (hillslope + channel) or `channel` (fluvial-only: dist-to-outlet − dist-to-stream, split against the channel network).
+- `channel_network` — raster naming the fluvial channel cells, used in `channel` mode to set where the channel begins (the channel head). A pluggable study input, like `source_mask`: Provenisaurus stays agnostic about *where channels begin* and consumes a network you supply — built by [`r.fluvial.channelheads`](https://github.com/MNiMORPH/GRASS-fluvial-profiler) (recommended `method=lsdtt`, DrEICH morphological channel heads), which authors the channel network and its structure. `null` (default) falls back to the internally-extracted `stream_threshold` network — the legacy fixed-accumulation-threshold proxy for the channel head ([issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1)). Ignored in `whole` mode.
 - `snap_radius` — `r.stream.snap` radius [cells] for snapping raw points onto the network; `null`/`0` if the points are already on it.
 - `stream_threshold` — accumulation threshold [cells] for stream extraction (used when the flow network is built/rebuilt).
 - `rebuild_basemaps` — force-rebuild the flow network even if it already exists (default: reuse if present).
@@ -90,6 +91,7 @@ provenisaurus:
   snap_radius: 50           # cells; null -> points already on the network
   source_indices: [2, 3, 4, 5, 6]
   dist_mode: whole          # or: channel
+  channel_network: null     # channel mode: fluvial network (r.fluvial.channelheads); null -> stream_threshold proxy
   stream_threshold: 10000   # cells; for building the stream network
   rebuild_basemaps: false   # true -> rebuild the flow network even if present
   bin_width_m: 12           # distance-bin width [m]; null -> raw one row per cell
