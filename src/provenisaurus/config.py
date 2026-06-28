@@ -30,6 +30,15 @@ class WorkflowConfig:
     source_mask: str = "source_mask"      # per-cell source weight: 1 (binary) or [0,1] scalar; else null
     points: str = "points"                # RAW sample points (snapped internally)
     site_column: str = "site"
+    # Fluvial channel network for dist_mode="channel": a raster naming the channel
+    # cells (the fluvial domain), against which the channel-only distance is split.
+    # A pluggable study input mirroring source_mask -- Provenisaurus stays agnostic
+    # about *where channels begin*; you supply the network. Built by
+    # r.fluvial.channelheads (recommended method=lsdtt, DrEICH morphological heads),
+    # which is the single author of the channel network and its structure. None
+    # falls back to the internally-extracted stream_threshold network -- the legacy
+    # fixed-accumulation-threshold proxy for the channel head (see issue #1).
+    channel_network: Optional[str] = None
     # flow-network maps Provenisaurus owns: built from the DEM, reused if present,
     # rebuilt on demand. NOT caller inputs -- named here only so the maps
     # Provenisaurus writes/reads are configurable.
