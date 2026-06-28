@@ -55,6 +55,23 @@ def test_rebuild_basemaps_default_is_reuse():
     assert WorkflowConfig().rebuild_basemaps is False
 
 
+def test_channel_network_default_is_none():
+    # None -> fall back to the internally-extracted stream_threshold network.
+    assert WorkflowConfig().channel_network is None
+
+
+def test_channel_network_from_yaml(tmp_path):
+    y = tmp_path / "cfg.yml"
+    y.write_text(
+        "provenisaurus:\n"
+        "  dem: tandemx_toro\n"
+        "  dist_mode: channel\n"
+        "  channel_network: fluvial_net\n"
+    )
+    c = WorkflowConfig.from_yaml(str(y))
+    assert c.channel_network == "fluvial_net"
+
+
 def test_bin_width_default_and_validation():
     assert WorkflowConfig().bin_width_m == 12.0          # histogram emit by default
     assert WorkflowConfig(bin_width_m=None).bin_width_m is None   # raw per-cell path
