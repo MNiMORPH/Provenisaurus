@@ -38,6 +38,25 @@ def extract_streams(dem, accumulation, threshold, streams, memory=4000):
                    overwrite=True, quiet=True)
 
 
+def channel_network_dreich(dem, drainage, raster_network, *, options=None):
+    """r.fluvial.channelheads method=dreich -> raster channel network.
+
+    DrEICH morphological channel heads (Clubb et al. 2014) plus everything
+    downstream, emitted as a CELL stream raster (the fluvial domain).  Routed on
+    Provenisaurus's own ``drainage`` (``direction=``) so the network's D8 paths
+    coincide with the cells ``r.stream.distance`` later routes along -- the channel
+    mask and the distance share one routing convention.  ``options`` are extra
+    module options forwarded verbatim (e.g. ``window_radius``, ``m_over_n``,
+    ``threshold``); a truthy ``c`` becomes the ``-c`` full-basin flag.  elevation,
+    direction and raster_network are wired here and must not appear in ``options``.
+    """
+    opts = dict(options or {})
+    flags = "c" if opts.pop("c", False) else ""
+    gs.run_command("r.fluvial.channelheads", method="dreich",
+                   elevation=dem, direction=drainage, raster_network=raster_network,
+                   flags=flags, overwrite=True, quiet=True, **opts)
+
+
 def snap_points(points, streams, accumulation, radius, out, memory=1500):
     """Snap raw sample points onto the channel network (r.stream.snap).
 
