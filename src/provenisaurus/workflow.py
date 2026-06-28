@@ -46,6 +46,13 @@ def run(cfg: WorkflowConfig):
     gs.run_command("g.region", raster=cfg.dem, quiet=True)
     basemaps = _ensure_basemaps(cfg)
     gs.message(f"Base maps: {basemaps}.")
+    if cfg.dist_mode == "channel" and cfg.channel_network:
+        if not G.raster_exists(cfg.channel_network):
+            raise ValueError(
+                f"channel_network raster {cfg.channel_network!r} not found "
+                "(build it with r.fluvial.channelheads, or set channel_network: "
+                "null to use the stream_threshold network)")
+        gs.message(f"Channel mode: distances split against {cfg.channel_network!r}.")
     cell_area = G.cell_area_m2()
 
     # Snap the raw points onto the network (or use as-is), then recover each
@@ -77,7 +84,8 @@ def run(cfg: WorkflowConfig):
         try:
             for e, n, site in sites:
                 distmap, _ws = G.site_distance_field(
-                    cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP)
+                    cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP,
+                    channel_network=cfg.channel_network)
                 with G.source_cells_stats_stream(
                         _ws, cfg.source_mask, cfg.lithology, distmap, tmp=_TMP) as lines:
                     for row in site_rows(lines, site):
