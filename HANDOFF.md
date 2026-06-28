@@ -152,10 +152,18 @@ in [`MEMORY-NOTES.md`](MEMORY-NOTES.md).
 Tracked in GitHub issues; everything else above is implemented and verified
 (history in `git log` and [`MEMORY-NOTES.md`](MEMORY-NOTES.md)).
 
-- **Channel heads** — `dist_mode=channel` works, but the channel network is a fixed
-  area-threshold and the *fluvial* channel head is unresolved
-  ([issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1): slope–area /
-  Passalacqua-GeoNet / Clubb-DrEICH / field maps, pluggable like `source_mask`).
-  Affects only `channel` runs. Blocked on **GRASS-channel-profiler** (the
-  channel-head method itself; in progress, AW); the Provenisaurus side is then just
-  the pluggable hook — a `channel_heads` map input mirroring `source_mask`.
+- **Channel heads** ([issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1))
+  — the pluggable hook is **implemented**: `dist_mode=channel` splits the
+  fluvial-only distance against a `channel_network` raster (a study input mirroring
+  `source_mask`), so the channel head comes from an explicit, swappable criterion
+  instead of the fixed `stream_threshold` proxy (`channel_network: null` keeps that
+  legacy proxy). The criterion itself lives **outside** Provenisaurus: the channel
+  network is authored by `r.fluvial.channelheads`
+  ([GRASS-fluvial-profiler](https://github.com/MNiMORPH/GRASS-fluvial-profiler),
+  recommended `method=lsdtt` — DrEICH morphological heads), which is the single
+  author of the channel network and its structure. Affects only `channel` runs.
+  Consistency note: the supplied network is used as the channel mask while distances
+  are routed along Provenisaurus's own `drainDir`, so build it on the same DEM/flow
+  routing. Remaining (issue acceptance, a *study*-repo task, not Provenisaurus
+  code): a sensitivity test of the inverted attrition lengths over the channel-head
+  criterion for the `channel` variant.
