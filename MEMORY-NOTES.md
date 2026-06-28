@@ -1,9 +1,11 @@
-# What we actually have to do: memory for large source maps
+# Memory for large source maps — the record
 
-Distilled from the CorraSaurus-side companion note (now deleted — its job done) and
-the **"Memory: generating a large (all-outcrop) source map"** section of
-[`HANDOFF.md`](HANDOFF.md), which holds the full diagnosis. This file is the live
-action list; `HANDOFF.md` is the *why*.
+The detailed record of how Provenisaurus generates large (all-outcrop) source maps
+without OOMing: the diagnosis, the streaming + histogram-emit fix, and the
+validation. Distilled from the CorraSaurus-side companion note (since deleted — its
+job done); [`HANDOFF.md`](HANDOFF.md) carries the short "why," this file the full
+detail. The work is **done** (see git history); this is kept as the reference
+behind the design.
 
 ## The problem, in one line
 

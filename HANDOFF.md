@@ -145,12 +145,12 @@ the emit path is built to never hold the full table:
   per-cell table (byte-for-byte the original output).
 
 Full record — the diagnosis, the bit-exact validation, and the decision trail — is
-in [`MEMORY-TODO.md`](MEMORY-TODO.md).
+in [`MEMORY-NOTES.md`](MEMORY-NOTES.md).
 
 ## Open work
 
 Tracked in GitHub issues; everything else above is implemented and verified
-(history in `git log` and [`MEMORY-TODO.md`](MEMORY-TODO.md)).
+(history in `git log` and [`MEMORY-NOTES.md`](MEMORY-NOTES.md)).
 
 - **Channel heads** — `dist_mode=channel` works, but the channel network is a fixed
   area-threshold and the *fluvial* channel head is unresolved
