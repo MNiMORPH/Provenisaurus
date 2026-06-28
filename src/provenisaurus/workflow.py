@@ -38,6 +38,28 @@ def _ensure_basemaps(cfg: WorkflowConfig) -> str:
     return "reused"
 
 
+def _ensure_channel_network(cfg: WorkflowConfig) -> str:
+    """Ensure the DrEICH channel network exists (dist_mode=channel, dreich method);
+    return ``"built"`` or ``"reused"``.
+
+    Mirrors :func:`_ensure_basemaps`: Provenisaurus owns ``channel_network``, so it
+    is reused when present and (re)built with r.fluvial.channelheads otherwise.  It
+    is rebuilt when missing or when ``rebuild_basemaps`` forces it -- the network is
+    routed on ``drainage``, so a flow-network rebuild invalidates it and they must
+    rebuild together.  (Run after ``_ensure_basemaps``, so ``drainage`` exists.)
+    """
+    if not cfg.rebuild_basemaps and G.raster_exists(cfg.channel_network):
+        return "reused"
+    if not gs.find_program("r.fluvial.channelheads", "--help"):
+        raise ValueError(
+            "r.fluvial.channelheads not found -- install it (g.extension "
+            "r.fluvial.channelheads url=<GRASS-fluvial-profiler>) or set "
+            "channel_head_method: threshold to use the stream_threshold network")
+    G.channel_network_dreich(cfg.dem, cfg.drainage, cfg.channel_network,
+                             options=cfg.channelheads)
+    return "built"
+
+
 def run(cfg: WorkflowConfig):
     """Ensure base maps, loop over the supplied sites, write the CSV.
 
@@ -46,13 +68,21 @@ def run(cfg: WorkflowConfig):
     gs.run_command("g.region", raster=cfg.dem, quiet=True)
     basemaps = _ensure_basemaps(cfg)
     gs.message(f"Base maps: {basemaps}.")
-    if cfg.dist_mode == "channel" and cfg.channel_network:
-        if not G.raster_exists(cfg.channel_network):
-            raise ValueError(
-                f"channel_network raster {cfg.channel_network!r} not found "
-                "(build it with r.fluvial.channelheads, or set channel_network: "
-                "null to use the stream_threshold network)")
-        gs.message(f"Channel mode: distances split against {cfg.channel_network!r}.")
+
+    # In channel mode, resolve the network the channel-only distance is split
+    # against. "dreich": build-or-reuse the DrEICH channel network (the channel head
+    # comes from r.fluvial.channelheads). "threshold": use the stream_threshold
+    # network directly (the legacy proxy) -- leave channel_net None so
+    # site_distance_field falls back to streams.
+    channel_net = None
+    if cfg.dist_mode == "channel":
+        if cfg.channel_head_method == "dreich":
+            status = _ensure_channel_network(cfg)
+            gs.message(f"Channel network ({cfg.channel_network}): {status}.")
+            channel_net = cfg.channel_network
+        else:
+            gs.message("Channel network: stream_threshold proxy "
+                       "(channel_head_method=threshold).")
     cell_area = G.cell_area_m2()
 
     # Snap the raw points onto the network (or use as-is), then recover each
@@ -85,7 +115,7 @@ def run(cfg: WorkflowConfig):
             for e, n, site in sites:
                 distmap, _ws = G.site_distance_field(
                     cfg.drainage, cfg.streams, e, n, cfg.dist_mode, tmp=_TMP,
-                    channel_network=cfg.channel_network)
+                    channel_network=channel_net)
                 with G.source_cells_stats_stream(
                         _ws, cfg.source_mask, cfg.lithology, distmap, tmp=_TMP) as lines:
                     for row in site_rows(lines, site):
