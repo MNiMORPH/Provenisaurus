@@ -115,6 +115,35 @@ present, build (all three together, for consistency) when any is missing or when
 inputs. (The `whole` reuse-path regression is byte-for-byte identical to the
 reference — 3,176,159 rows, matching MD5.)
 
+## The channel network (`dist_mode=channel`) — Provenisaurus owns it, the head method is swappable
+
+In `channel` mode the Sternberg attrition acts only along the channel, so the
+answer turns on *where the channel begins* — the fluvial channel head ([issue
+#1](https://github.com/MNiMORPH/Provenisaurus/issues/1)), one of the biggest levers
+on the channel-variant lengths. That head location is set by a `channel_network`
+raster (the fluvial domain), against which `site_distance_field` splits the
+fluvial-only distance (`dist-to-outlet − dist-to-stream`, clamped ≥ 0).
+
+Like the flow network, Provenisaurus **owns and builds** `channel_network`
+(build-or-reuse; rebuilt with the flow network, on which it depends), but the
+*criterion* is swappable via `channel_head_method`:
+
+- **`dreich`** (default) — Provenisaurus runs
+  [`r.fluvial.channelheads method=dreich`](https://github.com/MNiMORPH/GRASS-fluvial-profiler)
+  (DrEICH morphological channel heads; Clubb et al. 2014), which emits the network
+  directly as a raster (`raster_network=`). Provenisaurus wires `elevation=dem` and
+  **`direction=drainDir`** — its own flow routing — so the network's D8 paths
+  coincide with the cells `r.stream.distance` routes along (one routing convention;
+  this is what dissolved the original two-authors concern). Tuning options pass
+  through verbatim as the `channelheads` mapping (the module validates them).
+- **`threshold`** — the fixed `stream_threshold` network (the legacy
+  accumulation-threshold proxy). Kept *because* the issue's acceptance includes a
+  sensitivity test across head criteria; the proxy is one such criterion.
+
+The head-finding *science* stays in `r.fluvial.channelheads`; Provenisaurus
+orchestrates it, owns the resulting map, and stays method-agnostic. The module is
+not bundled — a `dreich` run fails early with an install hint if it is absent.
+
 ## Structure
 
 Functional core / imperative shell:
@@ -153,20 +182,11 @@ Tracked in GitHub issues; everything else above is implemented and verified
 (history in `git log` and [`MEMORY-NOTES.md`](MEMORY-NOTES.md)).
 
 - **Channel heads** ([issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1))
-  — the pluggable hook is **implemented**: `dist_mode=channel` splits the
-  fluvial-only distance against a `channel_network` raster (a study input mirroring
-  `source_mask`), so the channel head comes from an explicit, swappable criterion
-  instead of the fixed `stream_threshold` proxy (`channel_network: null` keeps that
-  legacy proxy). The criterion itself lives **outside** Provenisaurus: the channel
-  network is authored by `r.fluvial.channelheads`
-  ([GRASS-fluvial-profiler](https://github.com/MNiMORPH/GRASS-fluvial-profiler),
-  recommended `method=dreich` — DrEICH morphological heads), which is the single
-  author of the channel network and its structure. It emits the network directly as
-  a raster (`raster_network=`, a CELL stream map), which is what `channel_network`
-  consumes. Affects only `channel` runs. Consistency note: the supplied network is
-  used as the channel mask while distances are routed along Provenisaurus's own
-  `drainDir`, so the two must share a routing convention — feed that same `drainDir`
-  to r.fluvial.channelheads via its `direction=` input (r.watershed encoding) so the
-  network is routed on the identical D8 directions. Remaining (issue acceptance, a
-  *study*-repo task, not Provenisaurus code): a sensitivity test of the inverted
-  attrition lengths over the channel-head criterion for the `channel` variant.
+  — the machinery is **built** (see "The channel network" above):
+  `dist_mode=channel` with `channel_head_method=dreich` orchestrates
+  `r.fluvial.channelheads` to build/reuse `channel_network`, routed on the same
+  `drainDir`; `threshold` keeps the legacy proxy. Remaining: (a) an **end-to-end
+  Toro `channel` run** to verify against real data (needs the GRASS Toro location +
+  the `r.fluvial.channelheads` module symlinked in — it is under active development,
+  not a packaged addon); (b) the issue-acceptance **sensitivity test** of the
+  inverted attrition lengths over the head criterion, a *study*-repo task.

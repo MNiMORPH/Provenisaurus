@@ -51,7 +51,9 @@ needs a study-specific outlet, so it stays with the caller.
 **Parameters**
 - `source_indices` — which `lith_index` values are modelled sources (others dropped).
 - `dist_mode` — `whole` (hillslope + channel) or `channel` (fluvial-only: dist-to-outlet − dist-to-stream, split against the channel network).
-- `channel_network` — raster naming the fluvial channel cells, used in `channel` mode to set where the channel begins (the channel head). A pluggable study input, like `source_mask`: Provenisaurus stays agnostic about *where channels begin* and consumes a network you supply — built by [`r.fluvial.channelheads`](https://github.com/MNiMORPH/GRASS-fluvial-profiler) (recommended `method=dreich`, DrEICH morphological channel heads, with `raster_network=` for the raster form), which authors the channel network and its structure. `null` (default) falls back to the internally-extracted `stream_threshold` network — the legacy fixed-accumulation-threshold proxy for the channel head ([issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1)). Ignored in `whole` mode.
+- `channel_head_method` — in `channel` mode, how the channel head (where the fluvial channel begins — the dominant lever on the channel-variant attrition lengths, [issue #1](https://github.com/MNiMORPH/Provenisaurus/issues/1)) is located: `dreich` (default) runs [`r.fluvial.channelheads method=dreich`](https://github.com/MNiMORPH/GRASS-fluvial-profiler) (DrEICH morphological channel heads) to build the channel network; `threshold` uses the `stream_threshold` network directly (the legacy fixed-accumulation-threshold proxy). Swappable so the channel variant can be sensitivity-tested across criteria. Ignored in `whole` mode.
+- `channel_network` — name of the channel-network raster (the fluvial domain) Provenisaurus **owns** for `channel`/`dreich` mode: built once with `r.fluvial.channelheads` (routed on Provenisaurus's own `drainDir` via `direction=`, so the network's D8 paths match the distance routing), **reused** if present, rebuilt with the flow network. Like `accumulation`/`drainage`/`streams`, not a caller input — name it to keep distinct sweeps side by side.
+- `channelheads` — mapping forwarded verbatim to `r.fluvial.channelheads` (`method=dreich`), e.g. `{window_radius: 7, m_over_n: 0.525, threshold: 100, c: true}`. `elevation`, `direction`, and `raster_network` are wired by Provenisaurus; everything else (incl. the `c` full-basin flag) passes through and is validated by the module. Empty → the module's own defaults.
 - `snap_radius` — `r.stream.snap` radius [cells] for snapping raw points onto the network; `null`/`0` if the points are already on it.
 - `stream_threshold` — accumulation threshold [cells] for stream extraction (used when the flow network is built/rebuilt).
 - `rebuild_basemaps` — force-rebuild the flow network even if it already exists (default: reuse if present).
@@ -91,7 +93,12 @@ provenisaurus:
   snap_radius: 50           # cells; null -> points already on the network
   source_indices: [2, 3, 4, 5, 6]
   dist_mode: whole          # or: channel
-  channel_network: null     # channel mode: fluvial network (r.fluvial.channelheads); null -> stream_threshold proxy
+  # channel mode only (ignored for whole):
+  channel_head_method: dreich       # r.fluvial.channelheads heads; or: threshold (legacy proxy)
+  channel_network: channel_network  # owned channel-network raster (build-or-reuse)
+  channelheads:                     # forwarded to r.fluvial.channelheads (method=dreich)
+    window_radius: 7
+    m_over_n: 0.525
   stream_threshold: 10000   # cells; for building the stream network
   rebuild_basemaps: false   # true -> rebuild the flow network even if present
   bin_width_m: 12           # distance-bin width [m]; null -> raw one row per cell
